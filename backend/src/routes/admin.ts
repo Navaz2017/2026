@@ -111,7 +111,7 @@ admin.get("/sms/unmatched", h(async (_req, res) => {
 
 admin.post("/payments/:id/retry-match", h(async (req, res) => {
   const p = await prisma.payment.findUniqueOrThrow({ where: { id: req.params.id } });
-  res.json({ matched: await reconcile(p.provider, p.reference) });
+  res.json({ matched: await reconcile(p.provider, [p.reference]) });
 }));
 
 // ---- SMS forwarder devices. The key is shown exactly once.

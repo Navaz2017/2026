@@ -287,8 +287,10 @@ model SmsMessage {
   deviceId   String
   device     Device    @relation(fields: [deviceId], references: [id])
   provider   Provider
-  reference  String?
-  payerPhone String?
+  reference  String? // primary transaction id (Airtel TID / Mpamba Ref)
+  altReference String? // secondary id some Airtel bank deposits carry ("Ref 0003...")
+  payerPhone String? // Mpamba includes it; Airtel deposits only carry a name, so this is null there
+  payerName  String?
   amountMinor Int?
   rawBody    String
   sender     String
@@ -298,6 +300,7 @@ model SmsMessage {
   payment    Payment?
 
   @@unique([provider, reference])
+  @@unique([provider, altReference])
   @@unique([deviceId, receivedAt, sender])
 }
 

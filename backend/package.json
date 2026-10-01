@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p .",
     "test": "tsx --test test/*.test.ts",
+    "test:int": "INTEGRATION=1 tsx --test --test-concurrency=1 test/integration/*.test.ts",
     "prisma:gen": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"
   },

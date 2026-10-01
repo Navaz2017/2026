@@ -1,46 +1,47 @@
 import type { Provider } from "@prisma/client";
 import { normalisePhone } from "./phone.js";
+import { normaliseReference } from "./reference.js";
 
 export interface ParsedSms {
   provider: Provider;
-  reference: string;
-  payerPhone: string;
+  reference: string; // primary transaction id
+  altReference?: string; // secondary id (Airtel bank deposits)
+  payerPhone?: string; // only Mpamba reveals it
+  payerName?: string;
   amountMinor: number;
 }
 
-// IMPORTANT: wording differs between operators and changes over time. These patterns are a starting
-// point — collect ~50 real messages from each operator and extend test/smsParser.test.ts BEFORE go-live.
-// Unparseable messages are stored (parsedOk=false) and shown in the owner's "unmatched SMS" queue.
-const RULES: { provider: Provider; senders: RegExp; patterns: RegExp[] }[] = [
-  {
-    provider: "AIRTEL_MONEY",
-    senders: /^airtel\s*money$/i,
-    patterns: [
-      /received\s+MK\s?([\d,]+(?:\.\d+)?)\s+from\s+(\+?\d[\d\s]{8,13}).*?(?:Trans(?:action)?\s*ID|TID|Ref(?:erence)?)[:\s]+([A-Z0-9]{6,20})/is,
-    ],
-  },
-  {
-    provider: "MPAMBA",
-    senders: /^(tnm\s*mpamba|mpamba)$/i,
-    patterns: [
-      /(?:Confirmed|Conf)\.?\s*([A-Z0-9]{6,20}).*?received\s+MWK?\s?([\d,]+(?:\.\d+)?)\s+from\s+(\+?\d[\d\s]{8,13})/is,
-    ],
-  },
-];
+const AMT = String.raw`([\d,]+(?:\.\d+)?)`;
+const TID = String.raw`([A-Z0-9]+(?:\.[A-Z0-9]+)+)`;
 
-export function parseSms(sender: string, body: string): ParsedSms | null {
-  for (const rule of RULES) {
-    if (!rule.senders.test(sender.trim())) continue;
-    for (const p of rule.patterns) {
-      const m = body.match(p);
-      if (!m) continue;
-      // Airtel: amount, phone, ref. Mpamba: ref, amount, phone.
-      const [amountRaw, phoneRaw, ref] = rule.provider === "AIRTEL_MONEY" ? [m[1], m[2], m[3]] : [m[2], m[3], m[1]];
-      const phone = normalisePhone(phoneRaw ?? "");
-      const amount = Number((amountRaw ?? "").replace(/,/g, ""));
-      if (!phone || !ref || !Number.isFinite(amount)) return null;
-      return { provider: rule.provider, reference: ref.toUpperCase(), payerPhone: phone, amountMinor: Math.round(amount * 100) };
-    }
+// Parsing is content-based (sender IDs vary by handset/carrier). Only INCOMING-money messages match;
+// "... sent: ..." / "Money Sent to ..." messages deliberately return null.
+// Based on real samples supplied by the owner (Sept 2026). Add new wordings here + in test/core.test.ts.
+export function parseSms(_sender: string, rawBody: string): ParsedSms | null {
+  const body = rawBody.replace(/\s+/g, " ").trim();
+  let m: RegExpMatchArray | null;
+
+  // Airtel bank/other credit: "BW260929.1403.PL4887. You have received MK 10,000 from FCB BANK on 29/09/26 02:03 PM. Ref 000391467945 Bal: ..."
+  if ((m = body.match(new RegExp(String.raw`^${TID}\.?\s+You have received MK\s?${AMT} from (.+?) on \d{2}/\d{2}/\d{2,4}.*?(?:\bRef\s+([A-Z0-9]+))?\s*Bal`, "i")))) {
+    return build("AIRTEL_MONEY", m[1]!, m[2]!, { name: m[3], alt: m[4] });
+  }
+  // Airtel wallet deposit: "SHIDAHCHITAYA has deposited MK 9,000 to your account on 15/09/26 06:03 PM.Bal: MK 9373.52. TID CI260915.1803.125840."
+  if ((m = body.match(new RegExp(String.raw`^(.+?) has deposited MK\s?${AMT} to your account on .*?\bTID\s+${TID}`, "i")))) {
+    return build("AIRTEL_MONEY", m[3]!, m[2]!, { name: m[1] });
+  }
+  // Mpamba: "Money Received from 265883095004 JAMES BLIGHT on 23/04/2026 12:50:52. Amount: 2,500.00MWK Ref: DHN1368TJHT Bal: ..."
+  if ((m = body.match(new RegExp(String.raw`^Money Received from\s+(\+?\d{9,13})\s+(.+?)\s+on \d{2}/\d{2}/\d{2,4}.*?Amount:\s*${AMT}\s*MWK.*?Ref:\s*([A-Z0-9]+)`, "i")))) {
+    const phone = normalisePhone(m[1]!);
+    return phone ? build("MPAMBA", m[4]!, m[3]!, { name: m[2], phone }) : null;
   }
   return null;
+}
+
+function build(provider: Provider, ref: string, amount: string, x: { name?: string; alt?: string; phone?: string }): ParsedSms | null {
+  const n = Number(amount.replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return {
+    provider, reference: normaliseReference(ref), amountMinor: Math.round(n * 100),
+    ...(x.alt && { altReference: normaliseReference(x.alt) }), ...(x.phone && { payerPhone: x.phone }), ...(x.name && { payerName: x.name.trim() }),
+  };
 }

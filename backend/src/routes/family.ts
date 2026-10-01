@@ -8,6 +8,7 @@ import { canActForStudent } from "../lib/access.js";
 import { splitFee } from "../lib/money.js";
 import { normalisePhone } from "../lib/phone.js";
 import { reconcile } from "../lib/reconcile.js";
+import { REFERENCE_RE, normaliseReference } from "../lib/reference.js";
 import { Prisma } from "@prisma/client";
 
 export const family = Router();
@@ -96,14 +97,14 @@ family.post("/applications", body(z.object({
 }));
 
 family.post("/applications/:id/payment", body(z.object({
-  provider: z.enum(["AIRTEL_MONEY", "MPAMBA"]), reference: z.string().trim().min(6).max(20).regex(/^[A-Za-z0-9]+$/), payerPhone: z.string(),
+  provider: z.enum(["AIRTEL_MONEY", "MPAMBA"]), reference: z.string().trim().min(6).max(30).regex(REFERENCE_RE), payerPhone: z.string(),
 })), h(async (req, res) => {
   const app = await prisma.application.findUnique({ where: { id: req.params.id } });
   if (!app || !(await canActForStudent(req.user!, app.studentId))) return res.status(404).json({ error: "not_found" });
   if (app.status !== "AWAITING_PAYMENT") return res.status(409).json({ error: "not_awaiting_payment" });
   const phone = normalisePhone(req.body.payerPhone);
   if (!phone) return res.status(400).json({ error: "invalid_phone" });
-  const reference = req.body.reference.toUpperCase();
+  const reference = normaliseReference(req.body.reference);
   try {
     await prisma.$transaction([
       prisma.payment.create({ data: { applicationId: app.id, provider: req.body.provider, reference, payerPhone: phone, amountMinor: app.totalDueMinor } }),
@@ -113,6 +114,6 @@ family.post("/applications/:id/payment", body(z.object({
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return res.status(409).json({ error: "reference_already_used" });
     throw e;
   }
-  await reconcile(req.body.provider, reference); // instant confirm if the SMS already arrived
+  await reconcile(req.body.provider, [reference]); // instant confirm if the SMS already arrived
   res.status(202).json({ status: "PAYMENT_SUBMITTED", message: "Payment received for verification. You will receive a confirmation once your payment is confirmed." });
 }));

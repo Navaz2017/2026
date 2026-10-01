@@ -1,19 +1,23 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { normaliseReference } from "./reference.js";
 import { applicantUserIds, institutionAdminIds, notifyUsers } from "./notify.js";
 
 // Match a typed-in payment against an SMS received from a forwarder device.
 // Safe to call from both sides (payment submitted / SMS arrived); whichever comes second performs the match.
 // "One reference, one use" is enforced by DB unique indexes: Payment(provider,reference),
 // SmsMessage(provider,reference) and Payment.smsId @unique.
-export async function reconcile(provider: "AIRTEL_MONEY" | "MPAMBA", reference: string) {
-  const ref = reference.toUpperCase();
+// `refs` = every identifier we know for the transaction (Airtel bank deposits carry two; the applicant may have typed either).
+export async function reconcile(provider: "AIRTEL_MONEY" | "MPAMBA", refs: string[]) {
+  const ids = refs.filter(Boolean).map(normaliseReference);
   const result = await prisma.$transaction(
     async (tx) => {
-      const payment = await tx.payment.findUnique({ where: { provider_reference: { provider, reference: ref } }, include: { application: { include: { program: true } } } });
-      const sms = await tx.smsMessage.findUnique({ where: { provider_reference: { provider, reference: ref } } });
+      const payment = await tx.payment.findFirst({ where: { provider, reference: { in: ids } }, include: { application: { include: { program: true } } } });
+      const sms = await tx.smsMessage.findFirst({ where: { provider, OR: [{ reference: { in: ids } }, { altReference: { in: ids } }] } });
       if (!payment || !sms || payment.status === "CONFIRMED" || payment.smsId) return null;
-      if (sms.payerPhone !== payment.payerPhone) return null; // phone must match the cash-out number
+      // Mpamba SMS reveals the sender's number, so it must equal the number the applicant declared.
+      // Airtel deposit SMS carry only a name; there the unique one-time transaction id + amount are the proof.
+      if (sms.payerPhone && sms.payerPhone !== payment.payerPhone) return null;
       const enough = (sms.amountMinor ?? 0) >= payment.amountMinor;
       const claimed = await tx.payment.updateMany({
         where: { id: payment.id, smsId: null, status: "PENDING" },

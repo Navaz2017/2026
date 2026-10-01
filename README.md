@@ -1,4 +1,6 @@
-# Admissions platform (working name — see "Name options")
+# Enrolla — schools, colleges & universities admissions platform
+
+> Name chosen: **Enrolla**. Still to do: check the domain, trademark (MW + target markets) and App Store / Play Store availability.
 
 One app, four mailboxes: **schools/colleges/universities, parents, students and the system owner** all sign in to the same
 Next.js web app / Expo mobile app. Like Gmail, the UI shell is shared and the **role in the token** decides what data and
@@ -7,14 +9,15 @@ actions you get — enforced on the server, never just hidden in the UI.
 ```
 backend/   Node + Express + Prisma/Postgres + Redis/BullMQ   (REST /v1, role-scoped)
 web/       Next.js shell with role-based navigation + owner revenue/dashboard pages
+sms-forwarder/  Native Android app that forwards Airtel/Mpamba payment SMS (see its README)
 mobile/    Expo (iOS + Android, build with EAS) — SQLite local-first store, outbox, delta sync
 docker-compose.yml   Postgres + Redis for local dev
 ```
 
 Run locally: `docker compose up -d`, then in `backend/`: copy `.env.example` → `.env`, `npm i`, `npx prisma migrate dev`, `npm run dev`
-(and `npx tsx src/jobs/worker.ts` for letters). Seed one `RevenueConfig` row (3000/3000 bps) and one SYSTEM_OWNER user before use.
+(and `npx tsx src/jobs/worker.ts` for letters). Then `OWNER_EMAIL=… OWNER_PASSWORD=… npx tsx scripts/create-owner.ts` creates the owner and the default 30%/30% revenue config.
 
-## 6 name options
+## Name options considered
 1. **Enrolla** – "enrol" + "all"; short, friendly, easy to say.
 2. **Kwathu Admissions** ("Kwathu" = "our place/home" in Chichewa) – warm, local identity.
 3. **ApplyMW** – plain and searchable; says exactly what it does.
@@ -62,7 +65,7 @@ malware scanning on uploads; WAF/DDoS (Cloudflare or AWS WAF); secrets in a mana
 dependency scanning (Dependabot/`npm audit`) and an independent penetration test; Malawi data-protection compliance review for children's data.
 
 ## Known gaps / decisions for you
-- **SMS reader app:** Google Play heavily restricts `READ_SMS`, and Expo managed workflow can't read SMS. Plan: a small separate Android app (dev-build/native module) installed by sideload on 1–2 dedicated phones holding the Airtel/Mpamba numbers; it signs and POSTs to `/v1/sms/ingest`. Not yet written.
-- **SMS wording:** parser patterns in `lib/smsParser.ts` are placeholders — supply real sample messages from both operators and extend the tests.
-- Not yet built: PDF letter rendering, email/WhatsApp provider wiring (stubs in `jobs/worker.ts`), web pages beyond owner dashboard/revenue, mobile screens, DB migrations (run `prisma migrate dev`), malware scan, MFA, malware/virus pipeline, seat counting on acceptance.
-- Backend typechecks and the pure-logic tests pass; nothing has been run against a live database yet.
+- **SMS reader app:** built in `sms-forwarder/`. The pure logic is tested; the Android shell (receiver, WorkManager, UI) has **not been compiled or run on a device** yet — build it in Android Studio and do a real-phone test first.
+- **SMS wording:** parser now covers the real Airtel (bank credit, wallet deposit) and Mpamba (money received) samples; outgoing messages are ignored. Airtel deposits carry no phone number, so Airtel is verified by unique transaction id + amount (see `sms-forwarder/README.md`). Add new wordings as you meet them (e.g. other banks, agent deposits, amounts with decimals).
+- Not yet built: owner UI pages for devices / unmatched SMS, PDF letter rendering, email/WhatsApp provider wiring (stubs in `jobs/worker.ts`), web pages beyond owner dashboard/revenue, mobile screens, DB migrations (run `prisma migrate dev`), malware scan, MFA, malware/virus pipeline, seat counting on acceptance.
+- Backend typechecks; 10 unit tests and 11 end-to-end tests (real Postgres: payment↔SMS matching in both orders, single-use references, signature/replay checks, access control) pass. Initial migration is in `backend/prisma/migrations`.

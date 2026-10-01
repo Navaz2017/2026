@@ -1,0 +1,1 @@
+-keep class mw.enrolla.smsforwarder.** { *; }
