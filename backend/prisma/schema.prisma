@@ -1,0 +1,424 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// All money is stored as integer minor units (tambala for MWK). Never floats.
+
+enum Role {
+  SYSTEM_OWNER
+  INSTITUTION_ADMIN
+  PARENT
+  STUDENT
+}
+
+enum InstitutionType {
+  PRIMARY_SCHOOL
+  SECONDARY_SCHOOL
+  COLLEGE
+  UNIVERSITY
+}
+
+enum VerificationStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum ProgramStatus {
+  DRAFT
+  PENDING_VERIFICATION // uploaded before institution verified; auto-activates on verification
+  ACTIVE
+  CLOSED
+}
+
+enum ApplicationStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAYMENT_SUBMITTED // reference submitted, waiting for SMS match
+  SUBMITTED // paid + sent to institution
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  UNDERPAID
+}
+
+enum Provider {
+  AIRTEL_MONEY
+  MPAMBA
+}
+
+enum SettlementStatus {
+  OPEN
+  APPROVED
+  PAID
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  phone        String?   @unique
+  passwordHash String
+  role         Role
+  fullName     String
+  mfaSecret    String?
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  disabledAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  parent        ParentProfile?
+  student       Student?
+  refreshTokens RefreshToken[]
+
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  family    String // rotation family; reuse of a revoked token revokes the whole family
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([family])
+}
+
+model Institution {
+  id          String             @id @default(uuid())
+  name        String
+  type        InstitutionType
+  country     String             @default("MW")
+  district    String?
+  address     String?
+  contactEmail String
+  contactPhone String?
+  status      VerificationStatus @default(PENDING)
+  reviewNote  String?
+  verifiedAt  DateTime?
+  // Payout details for month-end settlement
+  payoutProvider Provider?
+  payoutPhone    String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  users     User[]
+  documents InstitutionDocument[]
+  programs  Program[]
+  media     Media[]
+  templates LetterTemplate[]
+  gradeRequestsIn  GradeRequest[] @relation("GradeRequestTo")
+  gradeRequestsOut GradeRequest[] @relation("GradeRequestFrom")
+
+  @@index([status, type])
+}
+
+model InstitutionDocument {
+  id            String      @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  kind          String // REGISTRATION_CERT, ACCREDITATION, TAX_CLEARANCE, DIRECTOR_ID ...
+  storageKey    String // private bucket key; only served via short-lived signed URL
+  sha256        String
+  mime          String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([institutionId])
+}
+
+model Program {
+  id            String        @id @default(uuid())
+  institutionId String
+  institution   Institution   @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  title         String
+  level         String // e.g. Form 1, Diploma, Bachelors
+  description   String?
+  seats         Int
+  seatsTaken    Int           @default(0)
+  applicationFee Int // minor units, set by institution
+  opensAt       DateTime?
+  closesAt      DateTime?
+  status        ProgramStatus @default(DRAFT)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  applications Application[]
+
+  @@index([institutionId])
+  @@index([status, updatedAt])
+}
+
+model Media {
+  id            String      @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  kind          String // IMAGE | VIDEO
+  caption       String?
+  storageKey    String
+  thumbKey      String?
+  approved      Boolean     @default(false) // visible to public only once institution verified (+ optional moderation)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([institutionId])
+}
+
+model ParentProfile {
+  id         String    @id @default(uuid())
+  userId     String    @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occupation String
+  employer   String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  children   Student[]
+}
+
+model Student {
+  id             String         @id @default(uuid())
+  userId         String?        @unique // child records created by a parent have no login
+  user           User?          @relation(fields: [userId], references: [id])
+  parentId       String?
+  parent         ParentProfile? @relation(fields: [parentId], references: [id])
+  fullName       String
+  dateOfBirth    DateTime
+  gender         String?
+  currentSchoolId String? // set when the school is registered on the platform -> enables grade requests
+  currentSchoolName String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  credentials  Credential[]
+  applications Application[]
+  gradeRequests GradeRequest[]
+
+  @@index([parentId])
+}
+
+model Credential {
+  id         String   @id @default(uuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  kind       String // SCHOOL_REPORT, MSCE, JCE, PSLCE, TRANSCRIPT, ID, BIRTH_CERT
+  title      String
+  storageKey String
+  sha256     String
+  mime       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([studentId])
+}
+
+model Application {
+  id         String            @id @default(uuid())
+  studentId  String
+  student    Student           @relation(fields: [studentId], references: [id])
+  programId  String
+  program    Program           @relation(fields: [programId], references: [id])
+  status     ApplicationStatus @default(DRAFT)
+  statement  String?
+  // Fee snapshot taken at creation so later config changes never alter what the applicant owes.
+  feeMinor           Int
+  studentServiceFeeMinor Int
+  commissionMinor        Int
+  totalDueMinor      Int
+  decisionNote String?
+  decidedAt    DateTime?
+  clientId     String?           // idempotency key from offline outbox
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  payments Payment[]
+  letter   Letter?
+  attachedCredentialIds String[]
+
+  @@unique([studentId, programId])
+  @@unique([clientId])
+  @@index([programId, status])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  applicationId String
+  application   Application   @relation(fields: [applicationId], references: [id])
+  provider      Provider
+  reference     String // transaction id the applicant typed in
+  payerPhone    String // E.164, number that made the cash-out
+  amountMinor   Int
+  status        PaymentStatus @default(PENDING)
+  smsId         String?       @unique // exactly one SMS can confirm a payment
+  sms           SmsMessage?   @relation(fields: [smsId], references: [id])
+  confirmedAt   DateTime?
+  settlementId  String?
+  settlement    Settlement?   @relation(fields: [settlementId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // A reference can only ever be used once per provider, across ALL applications.
+  @@unique([provider, reference])
+  @@index([status])
+  @@index([settlementId])
+}
+
+model SmsMessage {
+  id         String    @id @default(uuid())
+  deviceId   String
+  device     Device    @relation(fields: [deviceId], references: [id])
+  provider   Provider
+  reference  String?
+  payerPhone String?
+  amountMinor Int?
+  rawBody    String
+  sender     String
+  receivedAt DateTime
+  parsedOk   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  payment    Payment?
+
+  @@unique([provider, reference])
+  @@unique([deviceId, receivedAt, sender])
+}
+
+// Android phone running the SMS-forwarder app. The HMAC verifier needs the raw key, so it is stored
+// encrypted at rest (AES-256-GCM, key from KMS/env) rather than hashed.
+model Device {
+  id        String       @id @default(uuid())
+  label     String
+  keyEnc    String
+  revokedAt DateTime?
+  lastSeen  DateTime?
+  createdAt DateTime     @default(now())
+  messages  SmsMessage[]
+  nonces    DeviceNonce[]
+}
+
+model DeviceNonce {
+  deviceId String
+  nonce    String
+  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([deviceId, nonce])
+}
+
+model RevenueConfig {
+  id                    String   @id @default(uuid())
+  // Basis points: 3000 = 30.00%
+  institutionCommissionBps Int   // deducted from the institution's application fee
+  studentServiceFeeBps     Int   // added on top of the application fee, paid by the student
+  effectiveFrom         DateTime @default(now())
+  createdById           String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([effectiveFrom])
+}
+
+model Settlement {
+  id            String           @id @default(uuid())
+  institutionId String
+  periodStart   DateTime
+  periodEnd     DateTime
+  grossFeesMinor        Int // sum of application fees (institution price)
+  commissionMinor       Int // owner share from institution
+  studentServiceFeesMinor Int // owner share from students
+  netPayableMinor       Int // owed to institution
+  status        SettlementStatus @default(OPEN)
+  payoutRef     String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  payments      Payment[]
+
+  @@unique([institutionId, periodStart, periodEnd])
+}
+
+model LetterTemplate {
+  id            String      @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  kind          String // ACCEPTANCE | REJECTION
+  // Handlebars-like {{student.fullName}} {{program.title}} {{institution.name}} {{date}} placeholders; HTML is sanitised.
+  body          String
+  letterhead    String? // storage key of logo
+  signatory     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([institutionId, kind])
+}
+
+model Letter {
+  id            String      @id @default(uuid())
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id])
+  storageKey    String
+  deliveredVia  String[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model GradeRequest {
+  id           String      @id @default(uuid())
+  studentId    String
+  student      Student     @relation(fields: [studentId], references: [id])
+  fromSchoolId String
+  fromSchool   Institution @relation("GradeRequestFrom", fields: [fromSchoolId], references: [id])
+  toSchoolId   String? // the school being applied to (informational)
+  toSchool     Institution? @relation("GradeRequestTo", fields: [toSchoolId], references: [id])
+  status       String      @default("PENDING") // PENDING | FULFILLED | DECLINED
+  resultCredentialId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([fromSchoolId, status])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+}

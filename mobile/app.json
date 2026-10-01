@@ -1,0 +1,1 @@
+{ "expo": { "name": "Admissions", "slug": "admissions", "scheme": "admissions", "version": "0.1.0", "plugins": ["expo-router", "expo-secure-store"], "ios": { "bundleIdentifier": "com.example.admissions" }, "android": { "package": "com.example.admissions" } } }
