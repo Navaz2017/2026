@@ -117,3 +117,47 @@ family.post("/applications/:id/payment", body(z.object({
   await reconcile(req.body.provider, [reference]); // instant confirm if the SMS already arrived
   res.status(202).json({ status: "PAYMENT_SUBMITTED", message: "Payment received for verification. You will receive a confirmation once your payment is confirmed." });
 }));
+
+// ---- Read endpoints for the web app (the mobile app gets the same data through /sync/pull)
+const mine = (req: any) => (req.user.role === "PARENT" ? { parent: { userId: req.user.sub } } : { userId: req.user.sub });
+
+family.get("/applications", h(async (req, res) => {
+  res.json(await prisma.application.findMany({
+    where: { student: mine(req) },
+    select: { id: true, status: true, totalDueMinor: true, feeMinor: true, studentServiceFeeMinor: true, decisionNote: true, createdAt: true, updatedAt: true,
+      student: { select: { id: true, fullName: true } }, program: { select: { id: true, title: true, institution: { select: { name: true } } } },
+      payments: { select: { provider: true, reference: true, status: true }, orderBy: { createdAt: "desc" }, take: 1 }, letter: { select: { id: true } } },
+    orderBy: { updatedAt: "desc" }, take: 100,
+  }));
+}));
+
+family.get("/applications/:id/letter", h(async (req, res) => {
+  const a = await prisma.application.findFirst({ where: { id: req.params.id, student: mine(req) }, include: { letter: true } });
+  if (!a?.letter) return res.status(404).json({ error: "not_found" });
+  res.json({ url: await presignDownload(a.letter.storageKey, 120) });
+}));
+
+family.get("/students/:sid/credentials", h(async (req, res) => {
+  if (!(await canActForStudent(req.user!, req.params.sid!))) return res.status(404).json({ error: "not_found" });
+  res.json(await prisma.credential.findMany({ where: { studentId: req.params.sid }, select: { id: true, kind: true, title: true, mime: true, createdAt: true }, orderBy: { createdAt: "desc" } }));
+}));
+
+family.delete("/applications/:id", h(async (req, res) => {
+  const a = await prisma.application.findFirst({ where: { id: req.params.id, student: mine(req), status: { in: ["AWAITING_PAYMENT"] } } });
+  if (!a) return res.status(409).json({ error: "cannot_withdraw" });
+  await prisma.application.update({ where: { id: a.id }, data: { status: "WITHDRAWN" } });
+  res.status(204).end();
+}));
+
+// Students this user can act for: a parent's children, or the student themself.
+family.get("/students", h(async (req, res) => {
+  res.json(await prisma.student.findMany({ where: mine(req), orderBy: { createdAt: "asc" } }));
+}));
+
+family.patch("/students/:sid", body(z.object({
+  dateOfBirth: z.coerce.date().optional(), gender: z.enum(["M", "F"]).optional(),
+  currentSchoolId: z.string().uuid().nullable().optional(), currentSchoolName: z.string().max(120).optional(),
+}).strict()), h(async (req, res) => {
+  if (!(await canActForStudent(req.user!, req.params.sid!))) return res.status(404).json({ error: "not_found" });
+  res.json(await prisma.student.update({ where: { id: req.params.sid }, data: req.body }));
+}));

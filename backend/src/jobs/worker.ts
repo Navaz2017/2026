@@ -1,44 +1,49 @@
-// Run as a separate process: `node dist/jobs/worker.js`. Scales independently of the API.
+// Run as a separate process: `node dist/src/jobs/worker.js`. Scales independently of the API.
 import { Worker } from "bullmq";
 import { prisma } from "../db.js";
-import { redis } from "./queue.js";
-import { DEFAULT_TEMPLATES, renderLetter } from "../lib/letters.js";
-import { applicantUserIds, notifyUsers } from "../lib/notify.js";
-
-// Delivery adapters. Wire to AWS SES / SendGrid and the WhatsApp Cloud API (template messages) in deployment.
-async function sendEmail(_to: string, _subject: string, _text: string) { /* TODO(provider) */ }
-async function sendWhatsApp(_toE164: string, _text: string) { /* TODO(provider) */ }
+import { enqueueLetter, waQueue, workerRedis } from "./queue.js";
+import { DEFAULT_TEMPLATES_BY_LANG, isLang, renderLetter } from "../lib/letters.js";
+import { letterPdf } from "../lib/letterPdf.js";
+import { putObject } from "../lib/storage.js";
+import { sendEmail } from "../lib/mailer.js";
 
 new Worker<{ applicationId: string }>(
   "letters",
   async ({ data }) => {
     const app = await prisma.application.findUniqueOrThrow({
       where: { id: data.applicationId },
-      include: { student: { include: { user: true, parent: { include: { user: true } } } }, program: { include: { institution: true } } },
+      include: { student: { include: { user: true, parent: { include: { user: true } } } }, program: { include: { institution: { include: { whatsapp: true } } } } },
     });
     if (app.status !== "ACCEPTED" && app.status !== "REJECTED") return;
+    const inst = app.program.institution;
     const kind = app.status === "ACCEPTED" ? "ACCEPTANCE" : "REJECTION";
-    const tpl = await prisma.letterTemplate.findUnique({ where: { institutionId_kind: { institutionId: app.program.institutionId, kind } } });
-    const text = renderLetter(tpl?.body ?? DEFAULT_TEMPLATES[kind], {
-      "student.fullName": app.student.fullName,
-      "program.title": app.program.title,
-      "institution.name": app.program.institution.name,
-      date: new Date().toISOString().slice(0, 10),
-      signatory: tpl?.signatory ?? app.program.institution.name,
-    });
-    // TODO(pdf): render `text` on the institution letterhead to PDF, upload to S3, store key in Letter.storageKey.
+    const tpl = await prisma.letterTemplate.findUnique({ where: { institutionId_kind: { institutionId: inst.id, kind } } });
     const recipients = [app.student.user, app.student.parent?.user].filter((u): u is NonNullable<typeof u> => !!u);
-    const via: string[] = [];
-    for (const u of recipients) {
-      await sendEmail(u.email, `Your application: ${app.program.title}`, text); via.push("email");
-      if (u.phone) { await sendWhatsApp(u.phone, text); via.push("whatsapp"); }
-    }
-    await prisma.letter.upsert({
-      where: { applicationId: app.id },
-      create: { applicationId: app.id, storageKey: "pending-pdf", deliveredVia: via },
-      update: { deliveredVia: via },
+    const lang = recipients.map((u) => u.language).find(isLang) ?? "en"; // institution-custom template wins over language defaults
+    const text = renderLetter(tpl?.body ?? DEFAULT_TEMPLATES_BY_LANG[lang][kind], {
+      "student.fullName": app.student.fullName, "program.title": app.program.title, "institution.name": inst.name,
+      date: new Date().toISOString().slice(0, 10), signatory: tpl?.signatory ?? inst.name,
     });
-    await notifyUsers(await applicantUserIds(app.studentId), `APPLICATION_${app.status}`, `Application ${app.status.toLowerCase()}`, `Your application to ${app.program.title} was ${app.status.toLowerCase()}.`, { applicationId: app.id });
+    const key = `letters/${app.id}.pdf`;
+    await putObject(key, await letterPdf(inst.name, text), "application/pdf");
+    const via: string[] = [];
+    const letter = await prisma.letter.upsert({ where: { applicationId: app.id }, create: { applicationId: app.id, storageKey: key, deliveredVia: [] }, update: { storageKey: key } });
+
+    for (const u of recipients) {
+      await sendEmail(u.email, `${inst.name}: ${app.program.title}`, text).then(() => via.includes("email") || via.push("email")).catch((e) => console.error("email failed", e.message));
+      // WhatsApp only when the institution has linked its own number; the wa-worker records success on the Letter.
+      if (u.phone && inst.whatsapp?.status === "CONNECTED") {
+        await waQueue.add("send", { institutionId: inst.id, to: u.phone, text, letterId: letter.id, attachment: { key, filename: "Decision-letter.pdf" } },
+          { attempts: 4, backoff: { type: "exponential", delay: 30_000 } });
+      }
+    }
+    await prisma.letter.update({ where: { id: letter.id }, data: { deliveredVia: { set: [...new Set([...letter.deliveredVia, ...via])] } } });
   },
-  { connection: redis, concurrency: 10 },
+  { connection: workerRedis(), concurrency: 10 },
 );
+
+// Safety net: decisions whose letter job was lost (Redis down, crash) are re-queued every minute.
+setInterval(async () => {
+  const stuck = await prisma.application.findMany({ where: { status: { in: ["ACCEPTED", "REJECTED"] }, decidedAt: { lt: new Date(Date.now() - 90_000) }, letter: null }, select: { id: true }, take: 50 });
+  for (const a of stuck) await enqueueLetter(a.id);
+}, 60_000);

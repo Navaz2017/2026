@@ -1,18 +1,29 @@
 import type { Role } from "./api";
 
-// "Architect it like Gmail": one shell, one URL, different mailbox per role. The backend enforces the
-// same boundaries — this map only decides what to *show*.
-export const NAV: Record<Role, { href: string; label: string }[]> = {
+// One shell for everyone (like a mailbox app): the role decides which entries exist. The API enforces the
+// same boundaries — hiding a link is only convenience. Icons let people who can't read well find their way.
+export interface NavItem { href: string; key: string; icon: string }
+export const NAV: Record<Role, NavItem[]> = {
   SYSTEM_OWNER: [
-    { href: "/app/owner", label: "Dashboard" }, { href: "/app/owner/institutions", label: "Verification queue" },
-    { href: "/app/owner/revenue", label: "Revenue sharing" }, { href: "/app/owner/settlements", label: "Month-end payouts" },
-    { href: "/app/owner/payments", label: "Payments & SMS" }, { href: "/app/owner/users", label: "Users" }, { href: "/app/owner/audit", label: "Audit log" },
+    { href: "/app/owner", key: "nav.dashboard", icon: "📊" }, { href: "/app/owner/institutions", key: "nav.verification", icon: "✅" },
+    { href: "/app/owner/payments", key: "nav.payments", icon: "💳" }, { href: "/app/owner/devices", key: "nav.devices", icon: "📱" },
+    { href: "/app/owner/settlements", key: "nav.settlements", icon: "🏦" }, { href: "/app/owner/revenue", key: "nav.revenue", icon: "⚖️" },
+    { href: "/app/owner/users", key: "nav.users", icon: "👥" }, { href: "/app/owner/audit", key: "nav.audit", icon: "📜" },
+    { href: "/app/security", key: "nav.security", icon: "🔒" },
   ],
   INSTITUTION_ADMIN: [
-    { href: "/app/institution", label: "Applications" }, { href: "/app/institution/programs", label: "Programs" },
-    { href: "/app/institution/media", label: "Campus gallery" }, { href: "/app/institution/letters", label: "Letter templates" },
-    { href: "/app/institution/grades", label: "Grade requests" }, { href: "/app/institution/verification", label: "Verification" },
+    { href: "/app/institution", key: "nav.dashboard", icon: "📊" }, { href: "/app/institution/applications", key: "nav.applications", icon: "📥" },
+    { href: "/app/institution/programs", key: "nav.programs", icon: "🎓" }, { href: "/app/institution/media", key: "nav.gallery", icon: "🖼️" },
+    { href: "/app/institution/letters", key: "nav.letters", icon: "✉️" }, { href: "/app/institution/grades", key: "nav.grades", icon: "📝" },
+    { href: "/app/institution/whatsapp", key: "nav.whatsapp", icon: "💬" }, { href: "/app/institution/earnings", key: "nav.earnings", icon: "💰" },
+    { href: "/app/institution/documents", key: "nav.documents", icon: "📁" }, { href: "/app/security", key: "nav.security", icon: "🔒" },
   ],
-  PARENT: [{ href: "/app/family", label: "My children" }, { href: "/app/family/applications", label: "Applications" }, { href: "/app/browse", label: "Browse schools" }],
-  STUDENT: [{ href: "/app/family", label: "My profile" }, { href: "/app/family/applications", label: "Applications" }, { href: "/app/browse", label: "Browse schools" }],
+  PARENT: [
+    { href: "/app/family", key: "nav.children", icon: "👨‍👩‍👧" }, { href: "/app/browse", key: "nav.browse", icon: "🔎" },
+    { href: "/app/family/applications", key: "nav.myApps", icon: "📥" }, { href: "/app/family/documents", key: "nav.myDocs", icon: "📁" },
+  ],
+  STUDENT: [
+    { href: "/app/browse", key: "nav.browse", icon: "🔎" }, { href: "/app/family/applications", key: "nav.myApps", icon: "📥" },
+    { href: "/app/family/documents", key: "nav.myDocs", icon: "📁" },
+  ],
 };

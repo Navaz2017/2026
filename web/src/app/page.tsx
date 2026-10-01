@@ -1,24 +1,40 @@
 "use client";
-import { useState } from "react";
-import { login } from "@/lib/api";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { LanguageSwitcher, useT } from "@/lib/i18n";
+import { homeFor, useSession } from "@/lib/session";
+import { Btn, Field, Msg } from "@/lib/ui";
 
 export default function Login() {
-  const [err, setErr] = useState("");
+  const { t } = useT();
+  const { user, signIn } = useSession();
+  const router = useRouter();
+  const [needCode, setNeedCode] = useState(false);
+  const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
+  useEffect(() => { if (user) router.replace(homeFor(user.role)); }, [user, router]);
+
   return (
-    <form style={{ maxWidth: 360, margin: "10vh auto", display: "grid", gap: 12 }}
-      onSubmit={async (e) => {
-        e.preventDefault();
+    <main className="authwrap">
+      <div className="top"><span className="logo">{t("common.appName")}</span><LanguageSwitcher /></div>
+      <form className="card" onSubmit={async (e) => {
+        e.preventDefault(); setErr(""); setBusy(true);
         const f = new FormData(e.currentTarget);
-        try {
-          const role = await login(String(f.get("email")), String(f.get("password")));
-          window.location.href = { SYSTEM_OWNER: "/app/owner", INSTITUTION_ADMIN: "/app/institution", PARENT: "/app/family", STUDENT: "/app/family" }[role];
-        } catch { setErr("Invalid email or password"); }
+        try { await signIn("login", { email: f.get("email"), password: f.get("password"), ...(f.get("code") && { code: f.get("code") }) }); }
+        catch (x: any) {
+          if (x.code === "mfa_required") { setNeedCode(true); setErr(t("auth.mfaNeeded")); }
+          else setErr(t(`err.${x.code}`) === `err.${x.code}` ? t("err.internal") : t(`err.${x.code}`));
+        } finally { setBusy(false); }
       }}>
-      <h1>Sign in</h1>
-      <input name="email" type="email" placeholder="Email" required autoComplete="username" />
-      <input name="password" type="password" placeholder="Password" required autoComplete="current-password" />
-      <button>Sign in</button>
-      {err && <p role="alert">{err}</p>}
-    </form>
+        <h1>{t("auth.signIn")}</h1>
+        <Field label={t("common.email")}><input name="email" type="email" required autoComplete="username" inputMode="email" /></Field>
+        <Field label={t("common.password")}><input name="password" type="password" required autoComplete="current-password" /></Field>
+        {needCode && <Field label={t("auth.mfaCode")}><input name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required autoFocus /></Field>}
+        <Msg kind="err">{err}</Msg>
+        <Btn busy={busy} style={{ width: "100%" }}>{t("auth.signIn")}</Btn>
+        <p><Link href="/forgot">{t("auth.forgot")}</Link></p>
+        <p>{t("auth.noAccount")} <Link href="/signup">{t("auth.signUp")}</Link></p>
+      </form>
+    </main>
   );
 }

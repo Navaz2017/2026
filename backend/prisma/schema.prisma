@@ -74,7 +74,10 @@ model User {
   passwordHash String
   role         Role
   fullName     String
-  mfaSecret    String?
+  mfaSecret    String? // AES-GCM encrypted base32 TOTP secret
+  mfaEnabled   Boolean   @default(false)
+  language     String    @default("en") // en | ny (Chichewa) | tum (Tumbuka)
+  consentAt    DateTime? // data-protection consent captured at signup
   failedLogins Int       @default(0)
   lockedUntil  DateTime?
   disabledAt   DateTime?
@@ -86,8 +89,34 @@ model User {
   parent        ParentProfile?
   student       Student?
   refreshTokens RefreshToken[]
+  resets        PasswordReset[]
 
   @@index([role])
+}
+
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// One linked WhatsApp (whatsapp-web.js) per institution. The wa-worker process owns the live client;
+// the API only reads this row and writes `desired`.
+model WhatsAppSession {
+  institutionId String      @id
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  desired       Boolean     @default(false) // dashboard wants it connected
+  status        String      @default("DISCONNECTED") // DISCONNECTED | STARTING | QR | CONNECTED | FAILED
+  qr            String? // current pairing QR payload (short-lived)
+  phone         String? // linked number once connected
+  lastError     String?
+  updatedAt     DateTime    @updatedAt
 }
 
 model RefreshToken {
@@ -95,6 +124,7 @@ model RefreshToken {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tokenHash String    @unique
+  mfa       Boolean   @default(false) // token family was created after a TOTP check
   family    String // rotation family; reuse of a revoked token revokes the whole family
   expiresAt DateTime
   revokedAt DateTime?
@@ -127,6 +157,8 @@ model Institution {
   programs  Program[]
   media     Media[]
   templates LetterTemplate[]
+  whatsapp  WhatsAppSession?
+  settlements Settlement[]
   gradeRequestsIn  GradeRequest[] @relation("GradeRequestTo")
   gradeRequestsOut GradeRequest[] @relation("GradeRequestFrom")
 
@@ -271,6 +303,8 @@ model Payment {
   smsId         String?       @unique // exactly one SMS can confirm a payment
   sms           SmsMessage?   @relation(fields: [smsId], references: [id])
   confirmedAt   DateTime?
+  confirmedById String? // set only for manual owner confirmation
+  manualReason  String?
   settlementId  String?
   settlement    Settlement?   @relation(fields: [settlementId], references: [id])
   createdAt     DateTime      @default(now())
@@ -342,6 +376,7 @@ model RevenueConfig {
 model Settlement {
   id            String           @id @default(uuid())
   institutionId String
+  institution   Institution      @relation(fields: [institutionId], references: [id])
   periodStart   DateTime
   periodEnd     DateTime
   grossFeesMinor        Int // sum of application fees (institution price)
@@ -424,4 +459,11 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@index([actorId])
+}
+
+// Small owner-editable settings (e.g. the numbers applicants pay to).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

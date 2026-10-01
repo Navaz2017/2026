@@ -4,7 +4,7 @@ import { splitFee } from "../src/lib/money.js";
 import { parseSms } from "../src/lib/smsParser.js";
 import { normalisePhone } from "../src/lib/phone.js";
 import { normaliseReference, REFERENCE_RE } from "../src/lib/reference.js";
-import { renderLetter } from "../src/lib/letters.js";
+import { renderLetter, renderLetterHtml } from "../src/lib/letters.js";
 import { deviceSignature } from "../src/lib/crypto.js";
 
 test("30% commission + 30% student service fee", () => {
@@ -61,8 +61,8 @@ test("references normalise the way applicants type them", () => {
 });
 
 test("letter templates escape HTML and ignore code", () => {
-  const out = renderLetter("Hi {{name}} {{ evil }}", { name: "<script>x</script>" });
-  assert.equal(out, "Hi &lt;script&gt;x&lt;/script&gt; ");
+  assert.equal(renderLetterHtml("Hi {{name}} {{ evil }}", { name: "<script>x</script>" }), "Hi &lt;script&gt;x&lt;/script&gt; ");
+  assert.equal(renderLetter("Fish & {{name}}", { name: "Chips" }), "Fish & Chips"); // plain text for PDF / WhatsApp
 });
 
 test("device signature is stable and body-bound", () => {

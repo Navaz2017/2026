@@ -7,6 +7,7 @@ export interface AuthUser {
   sub: string;
   role: Role;
   inst?: string; // institution id for INSTITUTION_ADMIN
+  mfa?: boolean; // this session passed a TOTP check
 }
 
 declare module "express-serve-static-core" {
@@ -34,3 +35,7 @@ export const requireRole =
 
 export const signAccess = (u: AuthUser) =>
   jwt.sign(u, config.JWT_ACCESS_SECRET, { algorithm: "HS256", expiresIn: "15m", issuer: "admissions" });
+
+// SYSTEM_OWNER may do nothing privileged without MFA; institution admins need it for children's documents and decisions.
+export const requireMfa = (req: Request, res: Response, next: NextFunction) =>
+  req.user?.mfa ? next() : res.status(403).json({ error: "mfa_required" });

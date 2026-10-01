@@ -10,6 +10,7 @@ import { sms } from "./routes/sms.js";
 import { sync } from "./routes/sync.js";
 import { admin } from "./routes/admin.js";
 import { publicCatalog } from "./routes/public.js";
+import { files } from "./routes/files.js";
 
 export const app = express();
 app.set("trust proxy", 1); // behind the load balancer; req.ip is then the real client for rate limits and audit
@@ -31,6 +32,7 @@ app.use("/v1/institution", institutions);
 app.use("/v1/me", family);
 app.use("/v1/sms", sms);
 app.use("/v1/admin", admin);
+if (config.STORAGE_DRIVER === "local") app.use("/v1/files", files);
 
 const onError: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err); // swap for pino + Sentry; never return stack traces to clients

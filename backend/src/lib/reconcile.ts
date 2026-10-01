@@ -34,8 +34,13 @@ export async function reconcile(provider: "AIRTEL_MONEY" | "MPAMBA", refs: strin
   });
 
   if (!result) return false;
-  const { payment, enough } = result;
-  const app = payment.application;
+  await announce(result.payment.application, result.enough);
+  return result.enough;
+}
+
+type AppWithProgram = { id: string; studentId: string; program: { institutionId: string; title: string } };
+// Tell the applicant (and parent) and the institution. Shared by SMS matching and manual owner confirmation.
+export async function announce(app: AppWithProgram, enough: boolean) {
   if (enough) {
     await notifyUsers(await applicantUserIds(app.studentId), "PAYMENT_CONFIRMED", "Payment confirmed", "Your application has been sent to the institution.", { applicationId: app.id });
     await notifyUsers(await institutionAdminIds(app.program.institutionId), "APPLICATION_RECEIVED", "New application", `New application for ${app.program.title}.`, { applicationId: app.id });

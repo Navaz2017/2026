@@ -1,17 +1,58 @@
-// Tokens live in memory (access) + sessionStorage-free; refresh token should be moved to an httpOnly
-// cookie via a Next route handler (BFF) before production so XSS can never read it.
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-let access: string | null = null;
 export type Role = "SYSTEM_OWNER" | "INSTITUTION_ADMIN" | "PARENT" | "STUDENT";
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const r = await fetch(`${API}/v1${path}`, { ...init, headers: { "Content-Type": "application/json", ...(access && { Authorization: `Bearer ${access}` }), ...init.headers } });
-  if (!r.ok) throw Object.assign(new Error(r.statusText), { status: r.status, body: await r.json().catch(() => null) });
-  return r.status === 204 ? (undefined as T) : r.json();
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, public body?: any) { super(code); }
 }
 
-export async function login(email: string, password: string) {
-  const r = await api<{ accessToken: string; role: Role }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-  access = r.accessToken;
-  return r.role;
+let access: string | null = null;
+let refreshing: Promise<boolean> | null = null;
+export const setAccessToken = (t: string | null) => { access = t; };
+export const getAccessToken = () => access;
+
+// Refresh goes through our own Next route handler so the refresh token lives in an httpOnly cookie
+// that page scripts (and therefore XSS) can never read.
+export function refreshSession(): Promise<boolean> {
+  refreshing ??= fetch("/api/auth/refresh", { method: "POST" })
+    .then(async (r) => { if (!r.ok) return false; access = (await r.json()).accessToken; return true; })
+    .catch(() => false)
+    .finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+async function raw(path: string, init: RequestInit) {
+  return fetch(`${API}/v1${path}`, { ...init, headers: { ...(init.body && !(init.body instanceof Blob) ? { "Content-Type": "application/json" } : {}), ...(access && { Authorization: `Bearer ${access}` }), ...init.headers } });
+}
+
+export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
+  let r: Response;
+  try { r = await raw(path, init); } catch { throw new ApiError(0, "network"); }
+  if (r.status === 401 && (await refreshSession())) r = await raw(path, init); // access token expired: retry once
+  if (!r.ok) { const b = await r.json().catch(() => null); throw new ApiError(r.status, b?.error ?? "internal", b); }
+  const ct = r.headers.get("content-type") ?? "";
+  return (r.status === 204 ? undefined : ct.includes("json") ? await r.json() : await r.text()) as T;
+}
+
+export const post = <T = any>(path: string, body?: unknown) => api<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+export const put = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(body) });
+export const patch = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const del = <T = any>(path: string) => api<T>(path, { method: "DELETE" });
+
+// Direct-to-storage upload: ask the API for a signed URL, PUT the bytes, then tell the API about the stored file.
+export async function uploadFile(urlPath: string, confirmPath: string, file: File, extra: Record<string, unknown> = {}) {
+  const slot = await post(urlPath, { mime: file.type, size: file.size, ...extra });
+  const buf = await file.arrayBuffer();
+  const sha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buf))).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const put = await fetch(slot.url, { method: "PUT", headers: slot.headers, body: buf });
+  if (!put.ok) throw new ApiError(put.status, "internal");
+  return post(confirmPath, { key: slot.key, sha256: sha, mime: file.type, size: file.size, ...extra });
+}
+
+// CSV etc. need the Authorization header, so fetch as blob then save.
+export async function downloadBlob(path: string, filename: string) {
+  const r = await raw(path, {});
+  if (!r.ok) throw new ApiError(r.status, "internal");
+  const url = URL.createObjectURL(await r.blob());
+  Object.assign(document.createElement("a"), { href: url, download: filename }).click();
+  URL.revokeObjectURL(url);
 }

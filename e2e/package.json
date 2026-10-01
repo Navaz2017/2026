@@ -1,0 +1,1 @@
+{ "name": "enrolla-e2e", "private": true, "type": "module", "scripts": { "test": "bash run.sh" }, "dependencies": { "playwright-core": "^1.48.0" } }

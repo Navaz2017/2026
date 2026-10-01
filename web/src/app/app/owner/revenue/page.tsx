@@ -1,20 +1,40 @@
 "use client";
-import { useState } from "react";
-import { api } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { put } from "@/lib/api";
+import { useT } from "@/lib/i18n";
+import { Btn, Card, Field, Loading, Msg, Page, dt, mk, useBusy, useLoad } from "@/lib/ui";
 
-export default function RevenueConfig() {
-  const [com, setCom] = useState(30), [svc, setSvc] = useState(30), [msg, setMsg] = useState("");
-  const fee = 10_000, total = fee * (1 + svc / 100);
+export default function Revenue() {
+  const { t } = useT();
+  const hist = useLoad<any[]>("/admin/revenue-config");
+  const info = useLoad<{ AIRTEL_MONEY: string | null; MPAMBA: string | null }>("/public/payment-info");
+  const [com, setCom] = useState(30), [svc, setSvc] = useState(30);
+  const [airtel, setAirtel] = useState(""), [mpamba, setMpamba] = useState("");
+  const a = useBusy(), b = useBusy();
+  useEffect(() => { const c = hist.data?.[0]; if (c) { setCom(c.institutionCommissionBps / 100); setSvc(c.studentServiceFeeBps / 100); } }, [hist.data]);
+  useEffect(() => { if (info.data) { setAirtel(info.data.AIRTEL_MONEY ?? ""); setMpamba(info.data.MPAMBA ?? ""); } }, [info.data]);
+  const fee = 10_000;
+
   return (
-    <>
-      <h1>Revenue sharing</h1>
-      <label>Commission from institution fee (%) <input type="number" min={0} max={100} value={com} onChange={(e) => setCom(+e.target.value)} /></label><br />
-      <label>Student service fee on top (%) <input type="number" min={0} max={100} value={svc} onChange={(e) => setSvc(+e.target.value)} /></label>
-      <p>Example on a MK{fee.toLocaleString()} fee: student pays MK{total.toLocaleString()}; institution receives MK{(fee * (1 - com / 100)).toLocaleString()}; you earn MK{(fee * (com + svc) / 100).toLocaleString()}.</p>
-      <button onClick={async () => {
-        await api("/admin/revenue-config", { method: "PUT", body: JSON.stringify({ institutionCommissionBps: Math.round(com * 100), studentServiceFeeBps: Math.round(svc * 100) }) });
-        setMsg("Saved. Applies to new applications only.");
-      }}>Save</button> {msg}
-    </>
+    <Page title={t("rev.title")}>
+      <Card>
+        <Field label={t("rev.commission")}><input type="number" min={0} max={100} step="0.01" value={com} onChange={(e) => setCom(+e.target.value)} /></Field>
+        <Field label={t("rev.service")}><input type="number" min={0} max={100} step="0.01" value={svc} onChange={(e) => setSvc(+e.target.value)} /></Field>
+        <p>{t("rev.example", { fee: fee.toLocaleString(), total: (fee * (1 + svc / 100)).toLocaleString(), net: (fee * (1 - com / 100)).toLocaleString(), own: (fee * (com + svc) / 100).toLocaleString() })}</p>
+        <Btn busy={a.busy} onClick={() => a.run(async () => { await put("/admin/revenue-config", { institutionCommissionBps: Math.round(com * 100), studentServiceFeeBps: Math.round(svc * 100) }); await hist.reload(); }, t("rev.saved"))}>{t("common.save")}</Btn>
+        {a.msg && <Msg kind={a.msg.kind}>{a.msg.text}</Msg>}
+      </Card>
+      <Card title={t("rev.payInfoTitle")}>
+        <Field label={t("provider.AIRTEL_MONEY")}><input value={airtel} onChange={(e) => setAirtel(e.target.value)} inputMode="tel" /></Field>
+        <Field label={t("provider.MPAMBA")}><input value={mpamba} onChange={(e) => setMpamba(e.target.value)} inputMode="tel" /></Field>
+        <Btn busy={b.busy} onClick={() => b.run(() => put("/admin/payment-info", { ...(airtel && { AIRTEL_MONEY: airtel }), ...(mpamba && { MPAMBA: mpamba }) }), t("common.saved"))}>{t("common.save")}</Btn>
+        {b.msg && <Msg kind={b.msg.kind}>{b.msg.text}</Msg>}
+      </Card>
+      <Card title={t("rev.history")}>
+        <Loading error={hist.error} loading={hist.loading} />
+        <div className="tblwrap"><table className="tbl"><thead><tr><th>{t("rev.from")}</th><th>%</th><th>%</th></tr></thead>
+          <tbody>{hist.data?.map((c) => <tr key={c.id}><td>{dt(c.effectiveFrom)}</td><td>{c.institutionCommissionBps / 100}</td><td>{c.studentServiceFeeBps / 100}</td></tr>)}</tbody></table></div>
+      </Card>
+    </Page>
   );
 }

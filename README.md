@@ -9,6 +9,9 @@ actions you get — enforced on the server, never just hidden in the UI.
 ```
 backend/   Node + Express + Prisma/Postgres + Redis/BullMQ   (REST /v1, role-scoped)
 web/       Next.js shell with role-based navigation + owner revenue/dashboard pages
+e2e/        Real-browser (Playwright) end-to-end test of the web app
+shared/i18n/  Chichewa / Tumbuka / English strings (single source) + checker
+docs/       i18n.md (translation review!), whatsapp.md
 sms-forwarder/  Native Android app that forwards Airtel/Mpamba payment SMS (see its README)
 mobile/    Expo (iOS + Android, build with EAS) — SQLite local-first store, outbox, delta sync
 docker-compose.yml   Postgres + Redis for local dev
@@ -67,5 +70,23 @@ dependency scanning (Dependabot/`npm audit`) and an independent penetration test
 ## Known gaps / decisions for you
 - **SMS reader app:** built in `sms-forwarder/`. The pure logic is tested; the Android shell (receiver, WorkManager, UI) has **not been compiled or run on a device** yet — build it in Android Studio and do a real-phone test first.
 - **SMS wording:** parser now covers the real Airtel (bank credit, wallet deposit) and Mpamba (money received) samples; outgoing messages are ignored. Airtel deposits carry no phone number, so Airtel is verified by unique transaction id + amount (see `sms-forwarder/README.md`). Add new wordings as you meet them (e.g. other banks, agent deposits, amounts with decimals).
-- Not yet built: owner UI pages for devices / unmatched SMS, PDF letter rendering, email/WhatsApp provider wiring (stubs in `jobs/worker.ts`), web pages beyond owner dashboard/revenue, mobile screens, DB migrations (run `prisma migrate dev`), malware scan, MFA, malware/virus pipeline, seat counting on acceptance.
+- Not yet built: **mobile app screens** (the offline sync engine and i18n module exist; no UI yet), malware scanning of uploads, push notifications, refunds, official WhatsApp Cloud API, PDF letterhead logos, a seeded owner-invite flow. Email uses AWS SES in production (set `SES_FROM`); WhatsApp uses whatsapp-web.js (see `docs/whatsapp.md`).
 - Backend typechecks; 10 unit tests and 11 end-to-end tests (real Postgres: payment↔SMS matching in both orders, single-use references, signature/replay checks, access control) pass. Initial migration is in `backend/prisma/migrations`.
+
+
+## Web app (Next.js) — what exists
+One shell, role-based menus (owner · institution · parent · student), in **Chichewa, Chitumbuka or English** (see `docs/i18n.md`).
+- **Owner:** dashboard with alerts + 3 charts · verification queue (open documents, verify/reject/suspend) · payments & unmatched SMS (retry, manual confirm/reject with a recorded reason) · SMS phones (register, key shown once, revoke) · month-end payouts (+CSV) · revenue sharing & the numbers applicants pay to · users · activity log · two-step security.
+- **Institution:** overview · applicants (search/filter) with full file, **credential viewer** (MFA-gated, audited, 60 s links) and **accept/reject** (seat-limited, letter queued) · programmes · campus gallery · letter templates with preview · grade requests · **WhatsApp linking** (QR) · earnings & payout details · verification documents.
+- **Parent/student:** register children + occupation · find school/course · apply · pay (shows the Airtel/Mpamba number, reference + phone form, confirmation message) · documents upload · request grades from a previous school · download decision letter · notifications.
+
+Security details: refresh token only in an httpOnly SameSite=Strict cookie via a Next route handler; nonce-based CSP; MFA (TOTP) required for the owner and for institution admins' sensitive actions; password reset by email; consent captured at signup; seat counting is atomic.
+
+### Run it
+```
+docker compose up -d
+cd backend && cp .env.example .env && npm i && npx prisma migrate deploy && npx tsx scripts/dev-seed.ts   # demo data
+npm run dev            # API on :4000   (+ npm run dev:worker, npm run dev:wa for letters / WhatsApp; needs Redis)
+cd ../web && npm i && npm run dev      # web on :3000  → sign in as owner@enrolla.test / Passw0rd-demo1 (MFA secret JBSWY3DPEHPK3PXP)
+```
+Tests: `cd backend && npm test && npm run test:int` · `node shared/i18n/sync.mjs` · `cd e2e && bash run.sh`.
