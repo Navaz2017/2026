@@ -21,7 +21,7 @@ export default function Security() {
     <Page title={t("mfa.title")}>
       <Card>
         <p>{t("mfa.why")}</p>
-        {user.mfaEnabled ? <Msg kind="ok">✓ {t("mfa.enabled")}</Msg> : setup && (
+        {user.mfaEnabled ? <Msg kind="ok">{t("mfa.enabled")}</Msg> : setup && (
           <form onSubmit={(e) => { e.preventDefault(); run(async () => { await signIn("mfa-enable", { code }); }); }}>
             <p>{t("mfa.step1")}</p>
             <p>{t("mfa.step2")}</p>

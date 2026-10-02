@@ -36,7 +36,7 @@ export default function Browse() {
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div><strong>{p.title}</strong> <span className="muted">· {p.level}</span>
                 <div>{p.institution.name} <span className="muted">· {t(`type.${p.institution.type}`)} · {p.institution.district ?? ""}</span></div>
-                <div className="muted">{t("fam.fee")}: {mk(p.applicationFee)} · {left > 0 ? t("fam.seatsLeft", { n: left }) : t("fam.full")}{p.closesAt && ` · ${t("fam.closesOn", { date: dt(p.closesAt) })}`}</div></div>
+                <div className="muted">{t("fam.totalFee")}: <strong>{mk(p.totalDueMinor)}</strong> · {left > 0 ? t("fam.seatsLeft", { n: left }) : t("fam.full")}{p.closesAt && ` · ${t("fam.closesOn", { date: dt(p.closesAt) })}`}</div></div>
               <Btn disabled={left <= 0} onClick={() => { setSel(sel?.id === p.id ? null : p); setCreds([]); }}>{t("fam.apply")}</Btn>
             </div>
             {sel?.id === p.id && <div style={{ marginTop: ".75rem" }}>

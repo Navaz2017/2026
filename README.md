@@ -90,3 +90,7 @@ npm run dev            # API on :4000   (+ npm run dev:worker, npm run dev:wa fo
 cd ../web && npm i && npm run dev      # web on :3000  → sign in as owner@enrolla.test / Passw0rd-demo1 (MFA secret JBSWY3DPEHPK3PXP)
 ```
 Tests: `cd backend && npm test && npm run test:int` · `node shared/i18n/sync.mjs` · `cd e2e && bash run.sh`.
+
+## Look & feel
+University-style design system (see `web/src/app/globals.css`): deep navy + gold accent on white, **Source Serif 4** headings with **Source Sans 3** body (both self-hosted via `@fontsource`, so no third-party font requests and the strict CSP stays intact), a single shared header on the public site and the signed-in app, a public landing page with live programme search, split-panel sign-in, line icons instead of emoji, flat cards with hairline borders, underline tabs, WCAG-minded contrast, 44 px touch targets, skip-link, visible focus rings, dark-mode tokens. **English is the default language** and the first option in every language switcher (then Chichewa, Chitumbuka).
+Public programme listings show the total the applicant will actually pay (fee + student service fee).

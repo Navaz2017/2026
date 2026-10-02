@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { del, post } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Btn, Card, Empty, Field, Loading, Msg, Page, confirmBox, dtt, useBusy, useLoad } from "@/lib/ui";
 
@@ -31,7 +32,7 @@ export default function Devices() {
       {data?.map((d) => (
         <Card key={d.id}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <div><strong>{d.label}</strong> {d.revokedAt && <span className="badge bad">✕ {t("usr.blocked")}</span>}
+            <div><strong>{d.label}</strong> {d.revokedAt && <span className="badge bad"><Icon name="x" size={14} />{t("usr.blocked")}</span>}
               <div className="muted">{t("dev.lastSeen")}: {d.lastSeen ? dtt(d.lastSeen) : t("dev.never")} · {t("dev.messages")}: {d._count.messages}</div></div>
             {!d.revokedAt && <Btn kind="danger" busy={busy} onClick={() => confirmBox(t("dev.revoke") + "?") && run(async () => { await del(`/admin/devices/${d.id}`); await reload(); })}>{t("dev.revoke")}</Btn>}
           </div>

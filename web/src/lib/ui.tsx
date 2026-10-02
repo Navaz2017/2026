@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Icon } from "@/components/Icon";
 import { api, ApiError } from "./api";
 import { useT } from "./i18n";
 
@@ -47,7 +48,8 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 }
 
 export function Msg({ kind, children }: { kind: "ok" | "err" | "warn" | "info"; children: React.ReactNode }) {
-  return children ? <div className={`msg ${kind}`} role={kind === "err" ? "alert" : "status"}>{children}</div> : null;
+  const icon = { ok: "check", err: "alert", warn: "alert", info: "info" }[kind];
+  return children ? <div className={`msg ${kind}`} role={kind === "err" ? "alert" : "status"}><Icon name={icon} size={18} /><div>{children}</div></div> : null;
 }
 
 export function Loading({ error, loading }: { error?: unknown; loading?: boolean }) {
@@ -62,8 +64,8 @@ export function Badge({ ns, value }: { ns: string; value: string }) {
   const { t } = useT();
   const tone = /ACCEPTED|VERIFIED|CONFIRMED|ACTIVE|CONNECTED/.test(value) ? "good" : /REJECTED|SUSPENDED|FAILED|UNDERPAID/.test(value) ? "bad" : /PENDING|AWAITING|SUBMITTED|REVIEW|QR|STARTING/.test(value) ? "wait" : "neutral";
   // icon + text, never colour alone
-  const icon = tone === "good" ? "✓" : tone === "bad" ? "✕" : tone === "wait" ? "…" : "•";
-  return <span className={`badge ${tone}`}><span aria-hidden>{icon}</span> {t(`${ns}.${value}`)}</span>;
+  const icon = tone === "good" ? "check" : tone === "bad" ? "x" : tone === "wait" ? "clock" : "dot";
+  return <span className={`badge ${tone}`}><Icon name={icon} size={14} />{t(`${ns}.${value}`)}</span>;
 }
 
 export const confirmBox = (message: string) => window.confirm(message);

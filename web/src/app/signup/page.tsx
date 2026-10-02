@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LanguageSwitcher, useT } from "@/lib/i18n";
+import { AuthLayout } from "@/components/AuthLayout";
+import { useT } from "@/lib/i18n";
 import { homeFor, useSession } from "@/lib/session";
 import { Btn, Field, Msg } from "@/lib/ui";
 
@@ -16,8 +17,7 @@ export default function Signup() {
   useEffect(() => { if (user) router.replace(homeFor(user.role)); }, [user, router]);
 
   return (
-    <main className="authwrap">
-      <div className="top"><span className="logo">{t("common.appName")}</span><LanguageSwitcher /></div>
+    <AuthLayout>
       <form className="card" onSubmit={async (e) => {
         e.preventDefault(); setErr(""); setBusy(true);
         const f = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
@@ -53,8 +53,8 @@ export default function Signup() {
         <label className="check"><input name="consent" type="checkbox" required /><span>{t("auth.consent")}</span></label>
         <Msg kind="err">{err}</Msg>
         <Btn busy={busy} style={{ width: "100%" }}>{t("auth.signUp")}</Btn>
-        <p>{t("auth.haveAccount")} <Link href="/">{t("auth.signIn")}</Link></p>
+        <p>{t("auth.haveAccount")} <Link href="/login">{t("auth.signIn")}</Link></p>
       </form>
-    </main>
+    </AuthLayout>
   );
 }

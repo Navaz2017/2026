@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { del, uploadFile } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Btn, Card, Empty, Field, Loading, Msg, Page, confirmBox, useBusy, useLoad } from "@/lib/ui";
 
@@ -31,7 +32,7 @@ export default function Gallery() {
           {m.kind === "VIDEO" ? <video src={m.url} controls style={{ width: "100%", borderRadius: 8 }} /> : <img src={m.url} alt={m.caption ?? ""} style={{ width: "100%", borderRadius: 8 }} />}
           <div className="row" style={{ justifyContent: "space-between" }}>
             <span>{m.caption}</span>
-            <span className={`badge ${m.approved ? "good" : "wait"}`}>{m.approved ? "✓" : "…"} {m.approved ? t("inst.mediaVisible") : t("inst.mediaHidden")}</span>
+            <span className={`badge ${m.approved ? "good" : "wait"}`}><Icon name={m.approved ? "check" : "clock"} size={14} />{m.approved ? t("inst.mediaVisible") : t("inst.mediaHidden")}</span>
           </div>
           <Btn kind="danger" onClick={() => confirmBox(t("common.delete") + "?") && run(async () => { await del(`/institution/media/${m.id}`); await reload(); })}>{t("common.delete")}</Btn>
         </Card>

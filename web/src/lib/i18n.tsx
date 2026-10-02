@@ -5,7 +5,7 @@ import ny from "../i18n/ny.json";
 import tum from "../i18n/tum.json";
 
 export type Lang = "en" | "ny" | "tum";
-export const LANGS: Lang[] = ["ny", "tum", "en"];
+export const LANGS: Lang[] = ["en", "ny", "tum"];
 const DICTS: Record<Lang, Record<string, string>> = { en, ny, tum };
 
 type Vars = Record<string, string | number>;

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { api, post, uploadFile } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Btn, Card, Empty, Field, Loading, Msg, Page, dt, openSigned, useBusy, useLoad } from "@/lib/ui";
 
@@ -38,7 +39,7 @@ export default function MyDocuments() {
       {docs.data?.length === 0 && <Empty />}
       {docs.data?.map((d) => (
         <Card key={d.id}><div className="row" style={{ justifyContent: "space-between" }}>
-          <span>📄 <strong>{d.title}</strong> <span className="muted">· {t(`dockind.${d.kind}`)} · {dt(d.createdAt)}</span></span>
+          <span><Icon name="doc" size={18} /> <strong>{d.title}</strong> <span className="muted">· {t(`dockind.${d.kind}`)} · {dt(d.createdAt)}</span></span>
           <Btn kind="ghost" onClick={() => run(() => openSigned(async () => (await api(`/me/credentials/${d.id}/download`)).url))}>{t("common.view")}</Btn>
         </div></Card>
       ))}

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { downloadBlob, post } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Badge, Btn, Card, Empty, Field, Loading, Msg, Page, dt, mk, useBusy, useLoad } from "@/lib/ui";
 
@@ -34,7 +35,7 @@ export default function Settlements() {
               <div><strong>{t("set.net")}: {mk(s.netPayableMinor)}</strong> {s.payoutRef && <span className="muted">· {s.payoutRef}</span>}</div>
             </div>
             <div className="row">
-              <span className={`badge ${s.status === "PAID" ? "good" : "wait"}`}>{s.status === "PAID" ? "✓" : "…"} {s.status}</span>
+              <span className={`badge ${s.status === "PAID" ? "good" : "wait"}`}><Icon name={s.status === "PAID" ? "check" : "clock"} size={14} />{s.status}</span>
               {s.status !== "PAID" && <Btn busy={busy} onClick={() => { const ref = window.prompt(t("set.payoutRef")); if (ref) run(async () => { await post(`/admin/settlements/${s.id}/mark-paid`, { payoutRef: ref }); await reload(); }); }}>{t("set.markPaid")}</Btn>}
             </div>
           </div>

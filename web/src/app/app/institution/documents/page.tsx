@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { uploadFile } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Badge, Card, Empty, Field, Loading, Msg, Page, dt, useBusy, useLoad } from "@/lib/ui";
 
@@ -29,7 +30,7 @@ export default function Documents() {
           {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
         </Card>
         {data.documents.length === 0 && <Empty />}
-        {data.documents.map((d: any) => <Card key={d.id}>📄 {t(`doc.${d.kind}`) === `doc.${d.kind}` ? d.kind : t(`doc.${d.kind}`)} · {dt(d.createdAt)}</Card>)}
+        {data.documents.map((d: any) => <Card key={d.id}><Icon name="doc" size={18} /> {t(`doc.${d.kind}`) === `doc.${d.kind}` ? d.kind : t(`doc.${d.kind}`)} · {dt(d.createdAt)}</Card>)}
       </>}
     </Page>
   );

@@ -30,13 +30,13 @@ export default function WhatsApp() {
       <Loading error={error} loading={loading} />
       {s && <Card>
         <div className="row"><Badge ns="st.wa" value={s.status} /></div>
-        {s.status === "CONNECTED" && <p>✓ {t("inst.waLinkedAs", { phone: s.phone ?? "" })}</p>}
+        {s.status === "CONNECTED" && <Msg kind="ok">{t("inst.waLinkedAs", { phone: s.phone ?? "" })}</Msg>}
         {s.status === "QR" && <><p>{t("inst.waScan")}</p>{img && <div className="qr"><img src={img} alt="WhatsApp QR" width={260} height={260} /></div>}</>}
         {s.status === "FAILED" && <Msg kind="err">{s.lastError}</Msg>}
         {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
         <div className="row" style={{ marginTop: ".75rem" }}>
           {!s.desired || s.status === "FAILED" || s.status === "DISCONNECTED"
-            ? <Btn busy={busy} disabled={!user?.mfa} onClick={() => run(async () => { await post("/institution/whatsapp/connect"); await reload(); })}>💬 {t("inst.waConnect")}</Btn>
+            ? <Btn busy={busy} disabled={!user?.mfa} onClick={() => run(async () => { await post("/institution/whatsapp/connect"); await reload(); })}>{t("inst.waConnect")}</Btn>
             : <Btn kind="danger" busy={busy} disabled={!user?.mfa} onClick={() => confirmBox(t("inst.waDisconnect") + "?") && run(async () => { await post("/institution/whatsapp/disconnect"); await reload(); })}>{t("inst.waDisconnect")}</Btn>}
         </div>
       </Card>}

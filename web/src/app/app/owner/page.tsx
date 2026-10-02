@@ -24,7 +24,7 @@ export default function OwnerDashboard() {
           <Card className="kpi"><div className="v">{x.unmatchedSms}</div><div className="l">{t("owner.unmatched")}</div></Card>
         </div>
         <Card title={t("owner.alerts")}>
-          {x.alerts.length === 0 ? <Msg kind="ok">✓ {t("owner.noAlerts")}</Msg> : x.alerts.map((a: any, i: number) => <Msg key={i} kind="warn">⚠ {alertText(a)}</Msg>)}
+          {x.alerts.length === 0 ? <Msg kind="ok">{t("owner.noAlerts")}</Msg> : x.alerts.map((a: any, i: number) => <Msg key={i} kind="warn">{alertText(a)}</Msg>)}
         </Card>
         <div className="grid two">
           <Card><BarChart title={t("owner.chartStatus")} bars={x.appsByStatus.map((s: any) => ({ label: t(`st.app.${s.status}`), value: s._count }))} /></Card>

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { h } from "../middleware/validate.js";
 import { presignDownload } from "../lib/storage.js";
+import { splitFee } from "../lib/money.js";
 
 export const publicCatalog = Router();
 
@@ -33,7 +34,10 @@ publicCatalog.get("/programs", h(async (req, res) => {
     select: { id: true, title: true, level: true, seats: true, seatsTaken: true, closesAt: true, applicationFee: true, institution: { select: { id: true, name: true, type: true, district: true } } },
     orderBy: { updatedAt: "desc" }, take: 50, skip: Math.max(0, Number(req.query.offset) || 0),
   });
-  res.set("Cache-Control", "public, max-age=60").json(rows);
+  // Show what the applicant will actually pay (fee + current student service fee), never just the institution's fee.
+  const cfg = await prisma.revenueConfig.findFirst({ where: { effectiveFrom: { lte: new Date() } }, orderBy: { effectiveFrom: "desc" } });
+  const out = rows.map((p) => ({ ...p, totalDueMinor: splitFee(p.applicationFee, cfg?.institutionCommissionBps ?? 0, cfg?.studentServiceFeeBps ?? 0).totalDueMinor }));
+  res.set("Cache-Control", "public, max-age=60").json(out);
 }));
 
 // Where applicants send the money. Set by the owner (admin PUT /payment-info).

@@ -20,17 +20,35 @@ async function fresh() {
   return { ctx, page };
 }
 async function login(page, email, withCode = false) {
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/login");
   await page.fill('input[name=email]', email); await page.fill('input[name=password]', "Passw0rd-demo1");
   await page.click('form button.btn.primary');
   if (withCode) { await page.waitForSelector('input[name=code]'); await page.fill('input[name=code]', code()); await page.click('form button.btn.primary'); }
   await page.waitForURL(/\/app\//, { timeout: 15000 });
 }
 try {
-  // 1. language switching on the public login page
+  // 0. public landing page: English by default, programmes listed with the student-facing total
   let { ctx, page } = await fresh();
   await page.goto(BASE + "/");
+  check("landing page is in English by default", (await page.locator("h1").textContent()) === "Find your place. Apply with confidence.");
+  await page.waitForSelector("text=BSc Computer Science");
+  check("landing lists programmes with total incl. service fee (MK 13,000)", (await page.locator("#open").innerText()).includes("MK 13,000"));
+  const order = await page.locator("header .lang").allTextContents();
+  check("English is the first language option", order[0] === "English" && order.join() === "English,Chichewa,Chitumbuka", order.join());
+  const fonts = await page.evaluate(() => ({ h: getComputedStyle(document.querySelector("h1")).fontFamily, b: getComputedStyle(document.body).fontFamily }));
+  check("serif headings + sans body fonts", /Source Serif/.test(fonts.h) && /Source Sans/.test(fonts.b), JSON.stringify(fonts));
+  check("fonts actually loaded from our own bundle", await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some((f) => f.family.includes("Source Serif") && f.status === "loaded"); }));
+  await page.screenshot({ path: `${SHOTS}/landing-en.png`, fullPage: true });
+  await page.locator("header").getByRole("button", { name: "Chichewa" }).click();
+  check("landing page switches to Chichewa", (await page.locator("h1").textContent()) === "Pezani malo anu. Pemphani molimba mtima.");
+  await page.screenshot({ path: `${SHOTS}/landing-ny.png` });
+  await ctx.close();
+
+  // 1. language switching on the public login page
+  ({ ctx, page } = await fresh());
+  await page.goto(BASE + "/login");
   await page.getByRole("button", { name: "Chichewa" }).click();
+  await page.screenshot({ path: `${SHOTS}/login-en-ny.png` });
   check("login page in Chichewa", (await page.locator("h1").textContent()) === "Lowani");
   await page.getByRole("button", { name: "Chitumbuka" }).click();
   check("login page in Tumbuka", (await page.locator("h1").textContent()) === "Ŵinjani");
@@ -65,7 +83,7 @@ try {
 
   // 3. owner: MFA login, dashboard + all six screens
   ({ ctx, page } = await fresh());
-  await page.goto(BASE + "/"); await page.getByRole("button", { name: "Chichewa" }).click();
+  await page.goto(BASE + "/login"); await page.getByRole("button", { name: "Chichewa" }).click();
   await page.fill('input[name=email]', "owner@enrolla.test"); await page.fill('input[name=password]', "Passw0rd-demo1");
   await page.click('form button.btn.primary');
   await page.waitForSelector('input[name=code]');
@@ -132,7 +150,7 @@ try {
   // 6. phone-sized screen, Tumbuka
   const mctx = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true });
   const m = await mctx.newPage();
-  await m.goto(BASE + "/"); await m.getByRole("button", { name: "Chitumbuka" }).click();
+  await m.goto(BASE + "/login"); await m.getByRole("button", { name: "Chitumbuka" }).click();
   check("no horizontal scroll on a phone", await m.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   check("all three language buttons fully visible on a phone", await m.evaluate(() => [...document.querySelectorAll(".lang")].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })));
   await m.screenshot({ path: `${SHOTS}/login-mobile-tum.png` });

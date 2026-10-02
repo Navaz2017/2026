@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { api, post } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
 import { Badge, Btn, Card, Field, Loading, Msg, Page, confirmBox, dt, openSigned, useBusy, useLoad } from "@/lib/ui";
@@ -38,7 +39,7 @@ export default function ApplicantFile() {
           {a.credentials.length === 0 && <p className="muted">{t("common.none")}</p>}
           {a.credentials.map((c: any) => (
             <div key={c.id} className="row" style={{ justifyContent: "space-between", padding: ".35rem 0" }}>
-              <span>📄 <strong>{c.title}</strong> <span className="muted">· {t(`dockind.${c.kind}`) === `dockind.${c.kind}` ? c.kind : t(`dockind.${c.kind}`)}</span></span>
+              <span><Icon name="doc" size={18} /> <strong>{c.title}</strong> <span className="muted">· {t(`dockind.${c.kind}`) === `dockind.${c.kind}` ? c.kind : t(`dockind.${c.kind}`)}</span></span>
               <Btn kind="ghost" busy={busy} disabled={!user?.mfa} onClick={() => view(c.id)}>{t("common.view")}</Btn>
             </div>
           ))}
@@ -49,8 +50,8 @@ export default function ApplicantFile() {
           <Field label={t("inst.decisionNote")}><textarea style={{ minHeight: 80 }} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <p className="muted">{t("inst.letterNote")} · {t("nav.programs")}: {t("inst.seatsUsed", { used: a.program.seatsTaken, total: a.program.seats })}</p>
           <div className="row">
-            <Btn busy={busy} disabled={!user?.mfa} onClick={() => decide("ACCEPTED")}>✓ {t("inst.accept")}</Btn>
-            <Btn kind="danger" busy={busy} disabled={!user?.mfa} onClick={() => decide("REJECTED")}>✕ {t("inst.rejectApp")}</Btn>
+            <Btn busy={busy} disabled={!user?.mfa} onClick={() => decide("ACCEPTED")}><Icon name="check" size={18} /> {t("inst.accept")}</Btn>
+            <Btn kind="danger" busy={busy} disabled={!user?.mfa} onClick={() => decide("REJECTED")}><Icon name="x" size={18} /> {t("inst.rejectApp")}</Btn>
           </div>
         </Card>}
         {decided && a.decisionNote && <Card><strong>{t("common.note")}:</strong> {a.decisionNote}</Card>}

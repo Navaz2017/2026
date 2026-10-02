@@ -42,7 +42,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     await reload();
   };
 
-  const signOut = async () => { await fetch("/api/auth/logout", { method: "POST" }); setAccessToken(null); setUser(null); window.location.href = "/"; };
+  const signOut = async () => { await fetch("/api/auth/logout", { method: "POST" }); setAccessToken(null); setUser(null); window.location.href = "/login"; };
   const changeLanguage = (l: Lang) => { setLang(l); if (user) { setUser({ ...user, language: l }); patch("/auth/me", { language: l }).catch(() => {}); } };
 
   return <Session.Provider value={{ user, loading, reload, signIn, signOut, changeLanguage }}>{children}</Session.Provider>;

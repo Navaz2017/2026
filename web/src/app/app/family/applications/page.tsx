@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { api, del, post } from "@/lib/api";
+import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Badge, Btn, Card, Empty, Field, Loading, Msg, Page, confirmBox, mk, openSigned, useBusy, useLoad } from "@/lib/ui";
 
@@ -10,7 +11,7 @@ function PayForm({ a, info, onDone }: { a: any; info: any; onDone: () => void })
   const { busy, msg, run } = useBusy();
   const [done, setDone] = useState(false);
   const number = info?.[provider];
-  if (done) return <Msg kind="ok">✓ {t("fam.afterPay")}</Msg>;
+  if (done) return <Msg kind="ok">{t("fam.afterPay")}</Msg>;
   return (
     <form onSubmit={(e) => { e.preventDefault(); run(async () => { await post(`/me/applications/${a.id}/payment`, { provider, reference, payerPhone: phone }); setDone(true); onDone(); }); }}>
       <p>{t("fam.payHow", { amount: mk(a.totalDueMinor) })}</p>
@@ -49,7 +50,7 @@ export default function MyApplications() {
             <Btn kind="ghost" busy={busy} onClick={() => confirmBox(t("fam.withdraw") + "?") && run(async () => { await del(`/me/applications/${a.id}`); await reload(); })}>{t("fam.withdraw")}</Btn>
           </div>}
           {a.status === "PAYMENT_SUBMITTED" && <Msg kind="info">{t("fam.afterPay")}</Msg>}
-          {a.letter && <Btn busy={busy} onClick={() => run(() => openSigned(async () => (await api(`/me/applications/${a.id}/letter`)).url))}>📄 {t("fam.letter")}</Btn>}
+          {a.letter && <Btn busy={busy} onClick={() => run(() => openSigned(async () => (await api(`/me/applications/${a.id}/letter`)).url))}><Icon name="doc" size={18} /> {t("fam.letter")}</Btn>}
           {a.decisionNote && <p className="muted">“{a.decisionNote}”</p>}
         </Card>
       ))}
