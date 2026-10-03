@@ -83,12 +83,20 @@ One shell, role-based menus (owner · institution · parent · student), in **Ch
 Security details: refresh token only in an httpOnly SameSite=Strict cookie via a Next route handler; nonce-based CSP; MFA (TOTP) required for the owner and for institution admins' sensitive actions; password reset by email; consent captured at signup; seat counting is atomic.
 
 ### Run it
+Needs Node 20+ and Docker (for Postgres + Redis).
 ```
-docker compose up -d
-cd backend && cp .env.example .env && npm i && npx prisma migrate deploy && npx tsx scripts/dev-seed.ts   # demo data
-npm run dev            # API on :4000   (+ npm run dev:worker, npm run dev:wa for letters / WhatsApp; needs Redis)
-cd ../web && npm i && npm run dev      # web on :3000  → sign in as owner@enrolla.test / Passw0rd-demo1 (MFA secret JBSWY3DPEHPK3PXP)
+git clone -b claude/amazing-allen-v8q4e9 https://github.com/Navaz2017/2026.git && cd 2026
+docker compose up -d                                   # Postgres :5432, Redis :6379
+
+cd backend && cp .env.example .env && npm install
+npx prisma migrate deploy && npm run seed              # tables + demo data
+npm run dev                                            # API on http://localhost:4000
+
+# new terminal
+cd web && npm install && npm run dev                   # web on http://localhost:3000
 ```
+Demo logins (password `Passw0rd-demo1`): `owner@enrolla.test`, `school@enrolla.test` (both ask for a 6-digit code: add secret `JBSWY3DPEHPK3PXP` to an authenticator app), `student@enrolla.test`. Parents/students/schools can also sign up at `/signup`.
+Letters and WhatsApp need the extra processes `npm run dev:worker` / `npm run dev:wa` (Redis required; WhatsApp also needs Chromium).
 Tests: `cd backend && npm test && npm run test:int` · `node shared/i18n/sync.mjs` · `cd e2e && bash run.sh`.
 
 ## Look & feel
