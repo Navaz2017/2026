@@ -16,12 +16,13 @@ new Worker<{ applicationId: string }>(
     });
     if (app.status !== "ACCEPTED" && app.status !== "REJECTED") return;
     const inst = app.program.institution;
+    const offered = app.offeredProgramId ? await prisma.program.findUnique({ where: { id: app.offeredProgramId }, select: { title: true } }) : null;
     const kind = app.status === "ACCEPTED" ? "ACCEPTANCE" : "REJECTION";
     const tpl = await prisma.letterTemplate.findUnique({ where: { institutionId_kind: { institutionId: inst.id, kind } } });
     const recipients = [app.student.user, app.student.parent?.user].filter((u): u is NonNullable<typeof u> => !!u);
     const lang = recipients.map((u) => u.language).find(isLang) ?? "en"; // institution-custom template wins over language defaults
     const text = renderLetter(tpl?.body ?? DEFAULT_TEMPLATES_BY_LANG[lang][kind], {
-      "student.fullName": app.student.fullName, "program.title": app.program.title, "institution.name": inst.name,
+      "student.fullName": app.student.fullName, "program.title": offered?.title ?? app.program.title, "institution.name": inst.name,
       date: new Date().toISOString().slice(0, 10), signatory: tpl?.signatory ?? inst.name,
     });
     const key = `letters/${app.id}.pdf`;

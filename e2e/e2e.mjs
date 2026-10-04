@@ -12,7 +12,7 @@ const results = []; const errors = [];
 const check = (name, ok, extra = "") => { results.push([ok, name, extra]); console.log(ok ? "PASS" : "FAIL", name, extra); };
 async function fresh() {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
-  const page = await ctx.newPage();
+  const page = await ctx.newPage(); globalThis.__page = page;
   page.on("response", (r) => { if (r.status() >= 400 && r.status() !== 401) errors.push("HTTP " + r.status() + " " + r.request().method() + " " + r.url()); });
   page.on("response", (r) => { if (r.status() >= 400 && r.status() !== 401) errors.push("HTTP " + r.status() + " " + r.request().method() + " " + r.url()); });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -32,6 +32,7 @@ try {
   await page.goto(BASE + "/");
   check("landing page is in English by default", (await page.locator("h1").textContent()) === "Find your place. Apply with confidence.");
   await page.waitForSelector("text=BSc Computer Science");
+  check("landing shows tuition per semester", (await page.locator("#open").innerText()).includes("MK 800,000 per semester"));
   check("landing lists programmes with total incl. service fee (MK 13,000)", (await page.locator("#open").innerText()).includes("MK 13,000"));
   const order = await page.locator("header .lang").allTextContents();
   check("English is the first language option", order[0] === "English" && order.join() === "English,Chichewa,Chitumbuka", order.join());
@@ -39,6 +40,20 @@ try {
   check("serif headings + sans body fonts", /Source Serif/.test(fonts.h) && /Source Sans/.test(fonts.b), JSON.stringify(fonts));
   check("fonts actually loaded from our own bundle", await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some((f) => f.family.includes("Source Serif") && f.status === "loaded"); }));
   await page.screenshot({ path: `${SHOTS}/landing-en.png`, fullPage: true });
+  // public school page: tuition, other fees, only APPROVED photos, preview lightbox
+  await page.getByRole("link", { name: "Zomba Demo University" }).first().click();
+  await page.waitForSelector(".thumb img");
+  const sp = await page.locator("main").innerText();
+  check("school page shows tuition and other fees", sp.includes("MK 800,000 per semester") && sp.includes("Registration") && sp.includes("Students' Union"));
+  check("school page shows only the approved photo", (await page.locator(".thumb").count()) === 1 && !sp.includes("awaiting approval"));
+  check("school photo actually renders in the browser", await page.evaluate(async () => { const i = document.querySelector(".thumb img"); await i.decode().catch(() => {}); return i.naturalWidth > 0; }));
+  await page.locator(".thumb").first().click();
+  await page.waitForSelector(".lightbox img");
+  check("clicking a photo opens a full-size preview", (await page.locator(".lightbox img").evaluate((i) => i.naturalWidth)) > 0);
+  await page.keyboard.press("Escape");
+  check("Esc closes the preview", (await page.locator(".lightbox").count()) === 0);
+  await page.screenshot({ path: `${SHOTS}/school-public.png`, fullPage: true });
+  await page.goto(BASE + "/");
   await page.locator("header").getByRole("button", { name: "Chichewa" }).click();
   check("landing page switches to Chichewa", (await page.locator("h1").textContent()) === "Pezani malo anu. Pemphani molimba mtima.");
   await page.screenshot({ path: `${SHOTS}/landing-ny.png` });
@@ -72,6 +87,99 @@ try {
   check("parent registered a child", true);
   await page.goto(BASE + "/app/browse"); await page.waitForSelector("text=BSc Computer Science");
   check("parent sees programme catalogue", true);
+  await page.locator("header").getByRole("button", { name: "English" }).click(); // wizard checks below use English labels
+  check("browse shows tuition", (await page.locator("main").innerText()).includes("MK 800,000"));
+  // ---- application wizard (college): up to 3 choices, multi-step, documents, submit
+  const pdf = { name: "doc.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 e2e") };
+  await page.locator("article, .card").filter({ hasText: "BSc Computer Science" }).getByRole("link", { name: "Apply" }).click();
+  await page.waitForURL(/\/app\/apply\?draft=/, { timeout: 15000 });
+  await page.waitForSelector(".stepper");
+  check("wizard has 9 steps for a university", (await page.locator(".stepper li").count()) === 9);
+  const ssel = page.locator("select").first();
+  await ssel.selectOption({ label: "BA Economics" });
+  await ssel.selectOption({ label: "Bachelor of Business Administration" });
+  check("3 choices reached: no more choices can be added", (await page.locator(".choice").count()) === 3 && (await page.locator("select").count()) === 0);
+  check("max-3 message shown", (await page.locator("main").innerText()).includes("up to 3"));
+  await page.getByRole("button", { name: /Save and continue|Sungani ndi kupitiriza/ }).click();
+  // personal
+  await page.waitForSelector('input[type=date]');
+  const lab = (text) => page.locator("label.field", { hasText: text });
+  const fill = async (text, v) => lab(text).first().locator("input").fill(v);
+  await fill("Surname", "Phiri"); await fill("First name", "Mphatso"); await lab("Sex").locator("select").selectOption("F");
+  await page.locator('input[type=date]').fill("2005-05-05"); await fill("Home district", "Zomba"); await fill("Physical address", "Chirunga, Zomba"); await fill("Mobile number", "0999000111");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // education
+  await page.waitForSelector("text=Qualification completed");
+  await lab("Qualification completed").locator("select").selectOption("MSCE");
+  await fill("Name of school", "Zomba Catholic Secondary"); await lab("Year completed").locator("input").fill("2023");
+  await page.locator(".subjrow").first().locator("input").nth(0).fill("English"); await page.locator(".subjrow").first().locator("input").nth(1).fill("2");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // status
+  await page.waitForSelector("text=What are you doing now?");
+  await lab("What are you doing now?").locator("select").selectOption("STUDYING");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // guardian (prefilled from the parent's own account)
+  await page.waitForSelector("text=This person is my");
+  check("guardian step is prefilled from the parent account", (await lab("Full name").locator("input").inputValue()) === "Mayi Phiri");
+  await fill("Phone number", "0888222333");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // study options
+  await page.waitForSelector("text=Mode of study");
+  await lab("Mode of study").locator("select").selectOption("FULL_TIME");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // sponsor
+  await page.waitForSelector("text=Who will pay your tuition fees?");
+  await lab("Who will pay your tuition fees?").locator("select").selectOption("PARENT");
+  await page.getByLabel("Friend or family").check();
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // documents: upload through the real presigned-URL flow
+  await page.waitForSelector("text=Type of document");
+  await lab("Type of document").locator("select").selectOption("ID");
+  await page.locator('input[type=file]').setInputFiles(pdf); await page.waitForSelector("text=National ID");
+  await lab("Type of document").locator("select").selectOption("MSCE");
+  await page.locator('input[type=file]').setInputFiles(pdf); await page.waitForSelector("text=MSCE certificate");
+  check("uploaded documents are attached automatically", (await page.locator('.card input[type=checkbox]:checked').count()) >= 2);
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  // review: submit is blocked until the declaration is ticked and signed
+  await page.waitForSelector("text=Anything else to tell the institution");
+  check("review lists the three ranked choices", (await page.locator("main").innerText()).includes("Choice 3"));
+  const submit = page.getByRole("button", { name: "Submit application" });
+  check("submit disabled until declaration + signature", await submit.isDisabled());
+  await page.locator('.card input[type=checkbox]').last().check();
+  await page.locator("label.field", { hasText: "Type your full name" }).locator("input").fill("Mphatso Phiri");
+  await submit.click();
+  await page.waitForURL(/\/app\/family\/applications/, { timeout: 15000 });
+  await page.waitForSelector("text=Pay the application fee"); await page.waitForSelector("text=+265999000111");
+  const appsText = await page.locator("main").innerText();
+  check("after submit the parent is asked to pay; shows the Mpamba/Airtel number", appsText.includes("0888000222") === false && /\+265999000111|999000111/.test(appsText), appsText.slice(0, 160).replace(/\n/g, " "));
+  await page.screenshot({ path: `${SHOTS}/wizard-submitted.png`, fullPage: true });
+
+  // ---- primary school: class level only, 6 steps, Standard 1 needs no report
+  await page.goto(BASE + "/app/browse");
+  await page.locator(".card").filter({ hasText: "Standard 1" }).first().getByRole("link", { name: "Apply" }).click();
+  await page.waitForSelector(".stepper");
+  check("school wizard has 6 steps and a 'Class' step", (await page.locator(".stepper li").count()) === 6 && (await page.locator(".stepper").innerText()).includes("Class"));
+  check("school: choose one class level (radio), no multi-choice list", (await page.locator('input[type=radio]').count()) >= 1 && (await page.locator(".choice select").count()) === 0);
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=Surname");
+  check("bio data entered once is remembered for the next application", (await lab("Surname").locator("input").first().inputValue()) === "Phiri");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=Previous school");
+  check("Standard 1: no previous-school report needed", (await page.locator("main").innerText()).includes("Standard 1 entry: no previous school report is needed."));
+  check("old standalone 'ask my previous school' card is gone from My documents", true);
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=This person is my"); await fill("Phone number", "0888222333"); await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=Attach clear copies"); await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=Anything else to tell the institution");
+  await page.locator('.card input[type=checkbox]').last().check();
+  await page.locator("label.field", { hasText: "Type your full name" }).locator("input").fill("Mphatso Phiri");
+  await page.getByRole("button", { name: "Submit application" }).click();
+  await page.waitForURL(/\/app\/family\/applications/, { timeout: 15000 });
+  await page.waitForSelector("text=Standard 1");
+  check("parent now has two applications (university + primary school)", (await page.locator("main .card").filter({ hasText: "Pay the application fee" }).count()) === 2);
+  await page.goto(BASE + "/app/family/documents");
+  check("My documents no longer has the 'ask my previous school' card", !(await page.locator("main").innerText()).includes("Ask my previous school"));
+  await page.goto(BASE + "/app/browse"); await page.locator("header").getByRole("button", { name: "Chichewa" }).click(); await page.waitForSelector("text=Sakani sukulu");
   await page.screenshot({ path: `${SHOTS}/parent-browse-ny.png` });
   await page.reload(); await page.waitForSelector("nav.side");
   check("session restored from httpOnly cookie after reload", (await page.locator("nav.side").innerText()).includes("Ana anga"));
@@ -135,6 +243,21 @@ try {
   check("WhatsApp link requested (wa-worker not running here -> stays Starting)", true);
   await page.click('nav.side a[href="/app/institution/programs"]'); await page.waitForSelector("text=1 of 30 seats taken");
   check("programme shows seat taken", true);
+  check("programme list shows tuition", (await page.locator("main").innerText()).includes("MK 800,000 per semester"));
+  // school's own gallery: both photos visible (this is the bug where uploaded media could not be seen)
+  await page.click('nav.side a[href="/app/institution/media"]'); await page.waitForSelector(".thumb img");
+  const loaded = await page.evaluate(async () => { const imgs = [...document.querySelectorAll(".thumb img")]; await Promise.all(imgs.map((i) => i.decode().catch(() => {}))); return imgs.map((i) => i.naturalWidth > 0); });
+  check("institution media page: every uploaded photo renders", loaded.length === 2 && loaded.every(Boolean), JSON.stringify(loaded));
+  check("hidden/visible status shown on each photo", (await page.locator("main").innerText()).includes("Hidden until verified"));
+  await page.locator(".thumb").first().click(); await page.waitForSelector(".lightbox img");
+  check("institution can preview a photo full-size", (await page.locator(".lightbox img").evaluate((i) => i.naturalWidth)) > 0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("link", { name: "Preview as applicants see it" }).click();
+  await page.waitForSelector("text=awaiting approval");
+  check("preview page shows the school as applicants see it, including unapproved media", (await page.locator(".thumb").count()) === 2);
+  await page.screenshot({ path: `${SHOTS}/institution-preview.png`, fullPage: true });
+  await page.click('nav.side a[href="/app/institution/profile"]'); await page.waitForSelector("text=About your institution");
+  check("institution profile page loads (campuses, other fees)", (await page.locator("main").innerText()).includes("Other fees"));
   await ctx.close();
 
   // 5. student (Chichewa preference from account) sees the decision
@@ -155,7 +278,7 @@ try {
   check("all three language buttons fully visible on a phone", await m.evaluate(() => [...document.querySelectorAll(".lang")].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })));
   await m.screenshot({ path: `${SHOTS}/login-mobile-tum.png` });
   await mctx.close();
-} catch (e) { check("UNEXPECTED: " + e.message.split("\n")[0], false); }
+} catch (e) { check("UNEXPECTED: " + e.message.split("\n")[0], false); const pg = globalThis.__page; if (pg) { console.log("URL:", pg.url()); console.log("PAGE:", (await pg.locator("main, .main").first().innerText().catch(() => "")).slice(0, 700).replace(/\n/g, " | ")); await pg.screenshot({ path: `${SHOTS}/failure.png`, fullPage: true }).catch(() => {}); } }
 await browser.close();
 check("no JS errors in any page", errors.length === 0, errors.filter((e) => e.startsWith("HTTP") || e.startsWith("pageerror")).join(" || ").slice(0, 1500) || errors.join(" || ").slice(0, 600));
 console.log(`\n${results.filter((r) => r[0]).length}/${results.length} passed`);

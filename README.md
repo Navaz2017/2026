@@ -102,3 +102,6 @@ Tests: `cd backend && npm test && npm run test:int` · `node shared/i18n/sync.mj
 ## Look & feel
 University-style design system (see `web/src/app/globals.css`): deep navy + gold accent on white, **Source Serif 4** headings with **Source Sans 3** body (both self-hosted via `@fontsource`, so no third-party font requests and the strict CSP stays intact), a single shared header on the public site and the signed-in app, a public landing page with live programme search, split-panel sign-in, line icons instead of emoji, flat cards with hairline borders, underline tabs, WCAG-minded contrast, 44 px touch targets, skip-link, visible focus rings, dark-mode tokens. **English is the default language** and the first option in every language switcher (then Chichewa, Chitumbuka).
 Public programme listings show the total the applicant will actually pay (fee + student service fee).
+
+## Applying (multi-step)
+See `docs/application-form.md`. Colleges/universities: up to 3 ranked programmes at one institution; schools: one class level (Standard 1–8, Form 1–4 MSCE, up to Form 6 Cambridge, up to the school's declared highest class). 9 steps (6 for schools), resumable draft, bio data remembered, tuition and other fees shown, public school page with photo/video gallery + the school's own preview.

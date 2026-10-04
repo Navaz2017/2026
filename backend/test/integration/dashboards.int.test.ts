@@ -9,6 +9,7 @@ import { signAccess } from "../../src/middleware/auth.js";
 import { currentCode } from "../../src/lib/totp.js";
 import { decrypt } from "../../src/lib/crypto.js";
 import { outbox } from "../../src/lib/mailer.js";
+import { submitApplication } from "./helpers.js";
 
 const skip = !process.env.INTEGRATION;
 let server: Server, base: string, n = 0;
@@ -49,9 +50,7 @@ async function paidApplication(w: Awaited<ReturnType<typeof world>>, withCredent
     assert.equal(c.status, 201);
     credentialId = (await json(c)).id;
   }
-  const r = await call("POST", "/me/applications", token, { studentId: u.student!.id, programId: w.prog.id, credentialIds: credentialId ? [credentialId] : [] });
-  assert.equal(r.status, 201);
-  const a = await json(r);
+  const a = await submitApplication(call, token, u.student!.id, [w.prog.id], { credentialIds: credentialId ? [credentialId] : undefined });
   const pay = await prisma.payment.create({ data: { applicationId: a.id, provider: "MPAMBA", reference: `REF${i}ABCDEF`, payerPhone: "+265881000000", amountMinor: a.totalDueMinor, status: "CONFIRMED", confirmedAt: new Date() } });
   await prisma.application.update({ where: { id: a.id }, data: { status: "SUBMITTED" } });
   return { id: a.id as string, token, credentialId, student: u.student!, payment: pay };
@@ -98,7 +97,9 @@ test("institution views applicant file + credential via signed URL; others canno
   const list = await json(await call("GET", "/institution/applications", w.adminToken));
   assert.ok(list.some((x: any) => x.id === a.id));
   const detail = await json(await call("GET", `/institution/applications/${a.id}`, w.adminToken));
-  assert.equal(detail.credentials.length, 1);
+  assert.ok(detail.credentials.some((c: any) => c.id === a.credentialId) && detail.credentials.length >= 1);
+  assert.equal(detail.form.personal.surname, "Banda"); // the full form is visible to the institution
+  assert.equal(detail.choices.length, 1);
   assert.equal(JSON.stringify(detail).includes("storageKey"), false);
   assert.equal((await call("GET", `/institution/applications/${a.id}/credentials/${a.credentialId}/download`, w.adminNoMfa)).status, 403);
   const dl = await json(await call("GET", `/institution/applications/${a.id}/credentials/${a.credentialId}/download`, w.adminToken));

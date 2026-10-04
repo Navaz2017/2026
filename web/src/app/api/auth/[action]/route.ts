@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 const API = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const PATHS: Record<string, string> = { login: "/auth/login", signup: "/auth/signup", refresh: "/auth/refresh", "mfa-enable": "/auth/mfa/enable", logout: "/auth/logout" };
 const COOKIE = "rt";
+const clientIp = (req: NextRequest) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || undefined;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ act
   const body = fromCookie ? { refreshToken: req.cookies.get(COOKIE)?.value ?? "" } : await req.json().catch(() => ({}));
   const upstream = await fetch(`${API}/v1${path}`, {
     method: "POST", cache: "no-store",
-    headers: { "Content-Type": "application/json", ...(req.headers.get("authorization") && { Authorization: req.headers.get("authorization")! }) },
+    // Forward the real client IP so the API's brute-force limits apply per person, not per web server.
+    headers: { "Content-Type": "application/json", ...(clientIp(req) && { "X-Forwarded-For": clientIp(req)! }), ...(req.headers.get("authorization") && { Authorization: req.headers.get("authorization")! }) },
     body: JSON.stringify(body),
   }).catch(() => null);
   if (!upstream) return NextResponse.json({ error: "network" }, { status: 502 });

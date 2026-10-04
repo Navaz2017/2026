@@ -7,6 +7,7 @@ import { LanguageSwitcher, useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
 import { homeFor, useSession } from "@/lib/session";
 import { mk } from "@/lib/ui";
+import { tuitionText } from "@/components/SchoolView";
 
 export default function Landing() {
   const { t } = useT();
@@ -42,9 +43,10 @@ export default function Landing() {
               <article key={p.id} className="card" style={{ marginBottom: 0 }}>
                 <span className="badge neutral">{t(`type.${p.institution.type}`)}</span>
                 <h3 style={{ marginTop: ".6rem" }}>{p.title}</h3>
-                <div>{p.institution.name}{p.institution.district ? ` · ${p.institution.district}` : ""}</div>
-                <div className="muted" style={{ margin: ".4rem 0 .9rem" }}>{t("fam.totalFee")}: <strong>{mk(p.totalDueMinor)}</strong> · {t("fam.seatsLeft", { n: Math.max(0, p.seats - p.seatsTaken) })}</div>
-                <Link className="btn" href={user ? "/app/browse" : "/login"}>{t("fam.apply")}<Icon name="arrow" size={18} /></Link>
+                <div><Link href={`/schools/${p.institution.id}`}>{p.institution.name}</Link>{p.institution.district ? ` · ${p.institution.district}` : ""}</div>
+                <div className="muted">{t("prog.tuition")}: <strong>{tuitionText(t, p)}</strong></div>
+                <div className="muted" style={{ margin: ".2rem 0 .9rem" }}>{t("fam.totalFee")}: <strong>{mk(p.totalDueMinor)}</strong> · {t("fam.seatsLeft", { n: Math.max(0, p.seats - p.seatsTaken) })}</div>
+                <div className="row"><Link className="btn" href={`/schools/${p.institution.id}`}>{t("fam.viewSchool")}</Link><Link className="btn primary" href={user ? `/app/apply?program=${p.id}` : "/login"}>{t("fam.apply")}<Icon name="arrow" size={18} /></Link></div>
               </article>
             ))}
           </div>

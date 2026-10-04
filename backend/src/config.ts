@@ -16,6 +16,8 @@ const schema = z.object({
   STORAGE_DRIVER: z.enum(["s3", "local"]).default("local"),
   LOCAL_STORAGE_DIR: z.string().default("./.data"),
   PUBLIC_API_URL: z.string().default("http://localhost:4000"),
+  RATE_LIMIT_PER_MIN: z.coerce.number().default(300),
+  ACADEMIC_YEAR: z.string().default("2026/2027"),
   WA_DATA_DIR: z.string().default("./.wa-sessions"),
   WA_MAX_SESSIONS: z.coerce.number().default(40),
   // Optional: path to Chromium for whatsapp-web.js (e.g. /usr/bin/chromium).

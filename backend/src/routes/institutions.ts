@@ -8,6 +8,8 @@ import { normalisePhone } from "../lib/phone.js";
 import { DEFAULT_TEMPLATES, renderLetter } from "../lib/letters.js";
 import { enqueueLetter } from "../jobs/queue.js";
 import { applicantUserIds, notifyUsers } from "../lib/notify.js";
+import { ALL_LEVELS, MODES, TUITION_PERIODS, allowedLevels, isSchool, levelLabel, syllabiForLevel } from "../lib/levels.js";
+import { schoolPage } from "./public.js";
 import { audit } from "../lib/audit.js";
 
 export const institutions = Router();
@@ -20,13 +22,30 @@ institutions.get("/me", h(async (req, res) => {
   res.json(await prisma.institution.findUnique({ where: { id: inst(req) }, include: { documents: true } }));
 }));
 
+const otherFee = z.object({ name: z.string().min(1).max(80), amountMinor: z.number().int().min(0), period: z.enum(TUITION_PERIODS) });
 institutions.patch("/me", body(z.object({
   address: z.string().optional(), contactPhone: z.string().optional(),
   payoutProvider: z.enum(["AIRTEL_MONEY", "MPAMBA"]).optional(), payoutPhone: z.string().optional(),
+  description: z.string().max(2000).optional(), website: z.string().url().max(200).or(z.literal("")).optional(),
+  campuses: z.array(z.string().min(1).max(60)).max(10).optional(),
+  highestLevel: z.enum(ALL_LEVELS as [string, ...string[]]).nullable().optional(), syllabi: z.array(z.enum(["MSCE", "CAMBRIDGE"])).max(2).optional(),
+  otherFees: z.array(otherFee).max(20).optional(),
 }).strict()), h(async (req, res) => {
+  const me = await prisma.institution.findUniqueOrThrow({ where: { id: inst(req) } });
   const phone = req.body.payoutPhone ? normalisePhone(req.body.payoutPhone) : undefined;
   if (req.body.payoutPhone && !phone) return res.status(400).json({ error: "invalid_phone" });
-  res.json(await prisma.institution.update({ where: { id: inst(req) }, data: { ...req.body, ...(phone && { payoutPhone: phone }) } }));
+  const { highestLevel, syllabi } = req.body;
+  if (highestLevel) {
+    if (!isSchool(me.type) || !(me.type === "PRIMARY_SCHOOL" ? highestLevel.startsWith("STD") : highestLevel.startsWith("F"))) return res.status(422).json({ error: "level_not_for_this_school" });
+    if ((highestLevel === "F5" || highestLevel === "F6") && !(syllabi ?? me.syllabi).includes("CAMBRIDGE")) return res.status(422).json({ error: "cambridge_required_above_form_4" });
+  }
+  const { otherFees, ...rest } = req.body;
+  res.json(await prisma.institution.update({ where: { id: me.id }, data: { ...rest, ...(otherFees && { otherFees }), ...(phone && { payoutPhone: phone }) } }));
+}));
+
+// What applicants see (including photos/videos not yet public) — so the school can check its own page before going live.
+institutions.get("/preview", h(async (req, res) => {
+  res.set("Cache-Control", "no-store").json(await schoolPage(inst(req), true));
 }));
 
 // Step 1: ask for an upload slot. Step 2: client PUTs the file to S3. Step 3: client confirms (below).
@@ -45,21 +64,37 @@ institutions.post("/me/documents", body(fileMeta.extend({ key: z.string(), sha25
 
 // Programs may be created before verification; they stay PENDING_VERIFICATION until the owner verifies.
 const programBody = z.object({
-  title: z.string().min(2), level: z.string(), description: z.string().optional(), seats: z.number().int().min(1),
-  applicationFee: z.number().int().min(0), opensAt: z.coerce.date().optional(), closesAt: z.coerce.date().optional(),
+  title: z.string().min(2).max(120), level: z.string().min(1).max(60), code: z.string().max(20).optional(), description: z.string().max(2000).optional(),
+  seats: z.number().int().min(1), applicationFee: z.number().int().min(0),
+  tuitionFeeMinor: z.number().int().min(0), tuitionPeriod: z.enum(TUITION_PERIODS).default("SEMESTER"),
+  duration: z.string().max(40).optional(), entryRequirements: z.string().max(1000).optional(), modes: z.array(z.enum(MODES)).max(5).default([]),
+  classLevel: z.enum(ALL_LEVELS as [string, ...string[]]).optional(), syllabus: z.enum(["MSCE", "CAMBRIDGE"]).optional(),
+  opensAt: z.coerce.date().optional(), closesAt: z.coerce.date().optional(),
 });
 
 institutions.get("/programs", h(async (req, res) => {
-  res.json(await prisma.program.findMany({ where: { institutionId: inst(req) }, orderBy: { updatedAt: "desc" } }));
+  res.json(await prisma.program.findMany({ where: { institutionId: inst(req) }, orderBy: [{ classLevel: "asc" }, { updatedAt: "desc" }] }));
 }));
 
 institutions.post("/programs", body(programBody), h(async (req, res) => {
   const i = await prisma.institution.findUniqueOrThrow({ where: { id: inst(req) } });
   const status = i.status === "VERIFIED" ? "ACTIVE" : "PENDING_VERIFICATION";
-  res.status(201).json(await prisma.program.create({ data: { ...req.body, institutionId: i.id, status } }));
+  let data = { ...req.body };
+  if (isSchool(i.type)) {
+    // Schools offer class levels, not courses: Standard 1-8 or Form 1-4 (MSCE) / up to Form 6 (Cambridge), up to the highest level they declared.
+    if (!i.highestLevel) return res.status(422).json({ error: "set_highest_level_first" });
+    if (!data.classLevel || !allowedLevels(i).includes(data.classLevel)) return res.status(422).json({ error: "level_above_highest" });
+    if (i.type === "SECONDARY_SCHOOL") {
+      const ok = syllabiForLevel(data.classLevel).filter((x) => i.syllabi.includes(x));
+      if (!data.syllabus || !ok.includes(data.syllabus)) return res.status(422).json({ error: "syllabus_not_offered" });
+    } else data.syllabus = undefined;
+    if (await prisma.program.count({ where: { institutionId: i.id, classLevel: data.classLevel, syllabus: data.syllabus ?? null, status: { not: "CLOSED" } } })) return res.status(409).json({ error: "duplicate_level" });
+    data = { ...data, title: levelLabel(data.classLevel) + (data.syllabus ? ` (${data.syllabus})` : ""), level: levelLabel(data.classLevel) };
+  } else { data.classLevel = undefined; data.syllabus = undefined; }
+  res.status(201).json(await prisma.program.create({ data: { ...data, institutionId: i.id, status } }));
 }));
 
-institutions.patch("/programs/:id", body(programBody.partial().extend({ status: z.enum(["CLOSED"]).optional() }).strict()), h(async (req, res) => {
+institutions.patch("/programs/:id", body(programBody.omit({ classLevel: true, syllabus: true }).partial().extend({ status: z.enum(["CLOSED"]).optional() }).strict()), h(async (req, res) => {
   const r = await prisma.program.updateMany({ where: { id: req.params.id, institutionId: inst(req) }, data: req.body });
   r.count ? res.json({ ok: true }) : res.status(404).json({ error: "not_found" });
 }));
@@ -75,7 +110,7 @@ institutions.post("/media", body(z.object({ key: z.string(), kind: z.enum(["IMAG
 
 institutions.get("/media", h(async (req, res) => {
   const rows = await prisma.media.findMany({ where: { institutionId: inst(req) }, orderBy: { createdAt: "desc" } });
-  res.json(await Promise.all(rows.map(async (m) => ({ id: m.id, kind: m.kind, caption: m.caption, approved: m.approved, url: await presignDownload(m.storageKey, 300) }))));
+  res.json(await Promise.all(rows.map(async (m) => ({ id: m.id, kind: m.kind, caption: m.caption, approved: m.approved, url: await presignDownload(m.storageKey, 3600) }))));
 }));
 
 institutions.delete("/media/:id", h(async (req, res) => {
@@ -127,7 +162,7 @@ institutions.get("/applications", h(async (req, res) => {
 institutions.get("/applications/:id", h(async (req, res) => {
   const a = await prisma.application.findFirst({
     where: { id: req.params.id, program: { institutionId: inst(req) }, status: { in: [...VISIBLE] } },
-    include: { program: { select: { title: true, level: true, seats: true, seatsTaken: true } }, student: { include: { parent: { select: { occupation: true, employer: true, user: { select: { fullName: true, phone: true, email: true } } } } } } },
+    include: { program: { select: { title: true, level: true, seats: true, seatsTaken: true } }, choices: { orderBy: { rank: "asc" }, include: { program: { select: { id: true, title: true, level: true, seats: true, seatsTaken: true, classLevel: true, syllabus: true, tuitionFeeMinor: true, tuitionPeriod: true } } } }, student: { include: { parent: { select: { occupation: true, employer: true, user: { select: { fullName: true, phone: true, email: true } } } } } } },
   });
   if (!a) return res.status(404).json({ error: "not_found" });
   const fulfilled = await prisma.gradeRequest.findMany({ where: { studentId: a.studentId, status: "FULFILLED", resultCredentialId: { not: null } }, select: { resultCredentialId: true } });
@@ -154,21 +189,24 @@ institutions.post("/applications/:id/start-review", h(async (req, res) => {
   res.json({ updated: r.count });
 }));
 
-institutions.post("/applications/:id/decision", requireMfa, body(z.object({ decision: z.enum(["ACCEPTED", "REJECTED"]), note: z.string().max(1000).optional() })), h(async (req, res) => {
-  const a = await prisma.application.findFirst({ where: { id: req.params.id, program: { institutionId: inst(req) }, status: { in: ["SUBMITTED", "UNDER_REVIEW"] } } });
+institutions.post("/applications/:id/decision", requireMfa, body(z.object({ decision: z.enum(["ACCEPTED", "REJECTED"]), note: z.string().max(1000).optional(), programId: z.string().uuid().optional() })), h(async (req, res) => {
+  const a = await prisma.application.findFirst({ where: { id: req.params.id, program: { institutionId: inst(req) }, status: { in: ["SUBMITTED", "UNDER_REVIEW"] } }, include: { choices: true } });
   if (!a) return res.status(404).json({ error: "not_found_or_already_decided" });
+  // Accepting means offering ONE of the applicant's ranked choices (default: first choice).
+  const offered = req.body.decision === "ACCEPTED" ? (req.body.programId ?? a.programId) : null;
+  if (offered && !a.choices.some((c) => c.programId === offered)) return res.status(400).json({ error: "not_a_choice" });
   const ok = await prisma.$transaction(async (tx) => {
     // Seat accounting is atomic: two admins accepting the last seat at once cannot both succeed.
-    if (req.body.decision === "ACCEPTED") {
-      const seat: { count: number } = await tx.$queryRaw`UPDATE "Program" SET "seatsTaken" = "seatsTaken" + 1 WHERE id = ${a.programId} AND "seatsTaken" < seats RETURNING 1 AS count`.then((r: any) => ({ count: r.length }));
-      if (!seat.count) return false;
+    if (offered) {
+      const seat = await tx.$queryRaw<unknown[]>`UPDATE "Program" SET "seatsTaken" = "seatsTaken" + 1 WHERE id = ${offered} AND "seatsTaken" < seats RETURNING 1`;
+      if (!seat.length) return false;
     }
-    const r = await tx.application.updateMany({ where: { id: a.id, status: { in: ["SUBMITTED", "UNDER_REVIEW"] } }, data: { status: req.body.decision, decisionNote: req.body.note, decidedAt: new Date() } });
+    const r = await tx.application.updateMany({ where: { id: a.id, status: { in: ["SUBMITTED", "UNDER_REVIEW"] } }, data: { status: req.body.decision, decisionNote: req.body.note, decidedAt: new Date(), offeredProgramId: offered } });
     if (!r.count) throw new Error("concurrent_decision");
     return true;
   });
   if (!ok) return res.status(409).json({ error: "no_seats_left" });
-  await audit(req, `application.${req.body.decision}`, "Application", a.id);
+  await audit(req, `application.${req.body.decision}`, "Application", a.id, offered ? { offeredProgramId: offered } : undefined);
   await notifyUsers(await applicantUserIds(a.studentId), `APPLICATION_${req.body.decision}`, "", "", { applicationId: a.id });
   await enqueueLetter(a.id); // PDF + WhatsApp/email delivery; a sweeper retries if the queue is down
   res.json({ ok: true });

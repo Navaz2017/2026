@@ -8,6 +8,7 @@ import { prisma } from "../../src/db.js";
 import { app } from "../../src/app.js";
 import { signAccess } from "../../src/middleware/auth.js";
 import { deviceSignature, encrypt } from "../../src/lib/crypto.js";
+import { submitApplication } from "./helpers.js";
 
 const skip = !process.env.INTEGRATION;
 let server: Server, base: string, device: { id: string; key: string };
@@ -40,9 +41,8 @@ async function newApplication(feeMinor = 1_000_000) {
   const user = await prisma.user.create({ data: { email: `s${n}@x.mw`, passwordHash: "x", role: "STUDENT", fullName: "S", student: { create: { fullName: "S", dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
   const token = signAccess({ sub: user.id, role: "STUDENT" });
   const admin = await prisma.user.create({ data: { email: `a${n}@x.mw`, passwordHash: "x", role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
-  const r = await fetch(`${base}/v1/me/applications`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ studentId: user.student!.id, programId: prog.id }) });
-  assert.equal(r.status, 201);
-  return { ...((await r.json()) as { id: string; totalDueMinor: number; commissionMinor: number; studentServiceFeeMinor: number }), token, studentUserId: user.id, adminId: admin.id };
+  const a = await submitApplication((m, p, t, b) => fetch(`${base}/v1${p}`, { method: m, headers: { "Content-Type": "application/json", ...(t && { Authorization: `Bearer ${t}` }) }, body: b === undefined ? undefined : JSON.stringify(b) }), token, user.student!.id, [prog.id]);
+  return { ...a, token, adminId: admin.id, studentUserId: user.id };
 }
 const pay = (a: { id: string; token: string }, provider: string, reference: string, payerPhone = "0999111222") =>
   fetch(`${base}/v1/me/applications/${a.id}/payment`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${a.token}` }, body: JSON.stringify({ provider, reference, payerPhone }) });

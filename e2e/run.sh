@@ -15,7 +15,7 @@ export LOCAL_STORAGE_DIR=$(mktemp -d)
 [ -d node_modules ] || npm i --no-audit --no-fund >/dev/null
 cd "$ROOT/backend"
 npx prisma migrate deploy >/dev/null && npx tsx scripts/dev-seed.ts >/dev/null
-psql "$DATABASE_URL" -q -c "TRUNCATE \"Device\",\"DeviceNonce\" CASCADE; DELETE FROM \"User\" WHERE email='mayi@example.mw'; UPDATE \"Application\" SET status='SUBMITTED',\"decidedAt\"=NULL; UPDATE \"Program\" SET \"seatsTaken\"=0; DELETE FROM \"WhatsAppSession\"; DELETE FROM \"Notification\"" 2>/dev/null
+psql "$DATABASE_URL" -q -f "$ROOT/e2e/reset.sql" 2>/dev/null
 npx tsx src/server.ts >/tmp/e2e-api.log 2>&1 & API=$!
 (cd "$ROOT/web" && exec npx next start -p 3000 >/tmp/e2e-web.log 2>&1) & WEB=$!
 for i in $(seq 1 40); do curl -sf localhost:4000/healthz >/dev/null && curl -sf -o /dev/null localhost:3000/ && break; sleep 1; done

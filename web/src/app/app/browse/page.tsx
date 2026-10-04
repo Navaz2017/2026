@@ -1,26 +1,16 @@
 "use client";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
-import { post } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { Badge, Btn, Card, Empty, Field, Loading, Msg, Page, dt, mk, useBusy, useLoad } from "@/lib/ui";
+import { Empty, Field, Loading, Page, mk, dt, useLoad } from "@/lib/ui";
+import { Card, Btn } from "@/lib/ui";
+import { ProgramFacts } from "@/components/SchoolView";
 
+// Find a programme or class; each card links to the school's page (fees, photos, videos) and starts the application.
 export default function Browse() {
   const { t } = useT();
-  const router = useRouter();
   const [q, setQ] = useState(""), [type, setType] = useState("");
   const progs = useLoad<any[]>(`/public/programs?q=${encodeURIComponent(q)}${type ? `&type=${type}` : ""}`);
-  const kids = useLoad<any[]>("/me/students");
-  const [sel, setSel] = useState<any>(null), [who, setWho] = useState(""), [statement, setStatement] = useState(""), [creds, setCreds] = useState<string[]>([]);
-  const sid = who || kids.data?.[0]?.id;
-  const myCreds = useLoad<any[]>(sel && sid ? `/me/students/${sid}/credentials` : null, [sel, sid]);
-  const { busy, msg, run } = useBusy();
-
-  const apply = () => run(async () => {
-    await post("/me/applications", { studentId: sid, programId: sel.id, statement: statement || undefined, credentialIds: creds, clientId: crypto.randomUUID() });
-    router.push("/app/family/applications");
-  });
-
   return (
     <Page title={t("nav.browse")}>
       <div className="grid two">
@@ -33,26 +23,22 @@ export default function Browse() {
         const left = p.seats - p.seatsTaken;
         return (
           <Card key={p.id}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <div><strong>{p.title}</strong> <span className="muted">· {p.level}</span>
-                <div>{p.institution.name} <span className="muted">· {t(`type.${p.institution.type}`)} · {p.institution.district ?? ""}</span></div>
-                <div className="muted">{t("fam.totalFee")}: <strong>{mk(p.totalDueMinor)}</strong> · {left > 0 ? t("fam.seatsLeft", { n: left }) : t("fam.full")}{p.closesAt && ` · ${t("fam.closesOn", { date: dt(p.closesAt) })}`}</div></div>
-              <Btn disabled={left <= 0} onClick={() => { setSel(sel?.id === p.id ? null : p); setCreds([]); }}>{t("fam.apply")}</Btn>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <span className="badge neutral">{t(`type.${p.institution.type}`)}</span>
+                <h3 style={{ marginTop: ".4rem" }}>{p.title}{p.code ? <span className="muted"> · {p.code}</span> : null}</h3>
+                <div><Link href={`/schools/${p.institution.id}`}>{p.institution.name}</Link> <span className="muted">{p.institution.district ? `· ${p.institution.district}` : ""}</span></div>
+                <ProgramFacts p={p} />
+                <div className="muted">{t("fam.totalFee")}: <strong>{mk(p.totalDueMinor)}</strong> · {left > 0 ? t("fam.seatsLeft", { n: left }) : t("fam.full")}{p.closesAt && ` · ${t("fam.closesOn", { date: dt(p.closesAt) })}`}</div>
+              </div>
+              <div className="row">
+                <Link className="btn" href={`/schools/${p.institution.id}`}>{t("fam.viewSchool")}</Link>
+                {left > 0 ? <Link className="btn primary" href={`/app/apply?program=${p.id}`}>{t("fam.apply")}</Link> : <Btn disabled>{t("fam.full")}</Btn>}
+              </div>
             </div>
-            {sel?.id === p.id && <div style={{ marginTop: ".75rem" }}>
-              {["PRIMARY_SCHOOL", "SECONDARY_SCHOOL"].includes(p.institution.type) && <Msg kind="info">{t("fam.needReport")}</Msg>}
-              {(kids.data?.length ?? 0) > 1 && <Field label={t("fam.whoApplies")}><select value={sid} onChange={(e) => setWho(e.target.value)}>{kids.data!.map((k) => <option key={k.id} value={k.id}>{k.fullName}</option>)}</select></Field>}
-              <Field label={t("fam.attach")}>
-                <div>{myCreds.data?.map((c) => <label key={c.id} className="check"><input type="checkbox" checked={creds.includes(c.id)} onChange={(e) => setCreds(e.target.checked ? [...creds, c.id] : creds.filter((x) => x !== c.id))} /><span>{c.title} <span className="muted">· {t(`dockind.${c.kind}`) === `dockind.${c.kind}` ? c.kind : t(`dockind.${c.kind}`)}</span></span></label>)}</div>
-              </Field>
-              <Field label={t("fam.statement")}><textarea style={{ minHeight: 90 }} value={statement} onChange={(e) => setStatement(e.target.value)} maxLength={3000} /></Field>
-              {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
-              <Btn busy={busy} disabled={!sid} onClick={apply}>{t("fam.apply")}</Btn>
-            </div>}
           </Card>
         );
       })}
-      <span hidden><Badge ns="st.app" value="DRAFT" /></span>
     </Page>
   );
 }

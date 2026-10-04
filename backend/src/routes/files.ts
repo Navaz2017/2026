@@ -15,5 +15,5 @@ files.get("/get/:token", h(async (req, res) => {
   if (!t || t.op !== "get") return res.status(403).json({ error: "forbidden" });
   const data = await localRead(t.key).catch(() => null);
   if (!data) return res.status(404).json({ error: "not_found" });
-  res.type(await localMime(t.key)).set({ "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"}).send(data);
+  res.type(await localMime(t.key)).set({ "Content-Disposition": "inline", "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "cross-origin" /* helmet default (same-origin) would block <img>/<video> on the web app */ }).send(data);
 }));

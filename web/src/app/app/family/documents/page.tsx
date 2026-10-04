@@ -1,19 +1,17 @@
 "use client";
 import { useState } from "react";
-import { api, post, uploadFile } from "@/lib/api";
+import { api, uploadFile } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Btn, Card, Empty, Field, Loading, Msg, Page, dt, openSigned, useBusy, useLoad } from "@/lib/ui";
 
-const KINDS = ["SCHOOL_REPORT", "MSCE", "JCE", "PSLCE", "TRANSCRIPT", "ID", "BIRTH_CERT", "OTHER"];
+import { DOC_KINDS as KINDS } from "@/lib/forms";
 export default function MyDocuments() {
   const { t } = useT();
   const kids = useLoad<any[]>("/me/students");
   const [who, setWho] = useState(""), [kind, setKind] = useState("SCHOOL_REPORT"), [title, setTitle] = useState("");
-  const [school, setSchool] = useState("");
   const sid = who || kids.data?.[0]?.id;
   const docs = useLoad<any[]>(sid ? `/me/students/${sid}/credentials` : null, [sid]);
-  const schools = useLoad<any[]>("/public/institutions");
   const { busy, msg, run } = useBusy();
 
   return (
@@ -43,10 +41,6 @@ export default function MyDocuments() {
           <Btn kind="ghost" onClick={() => run(() => openSigned(async () => (await api(`/me/credentials/${d.id}/download`)).url))}>{t("common.view")}</Btn>
         </div></Card>
       ))}
-      <Card title={t("fam.askGrades")}>
-        <Field label={t("fam.chooseSchool")}><select value={school} onChange={(e) => setSchool(e.target.value)}><option value="" />{schools.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-        <Btn busy={busy} disabled={!school || !sid} onClick={() => run(() => post(`/me/students/${sid}/grade-requests`, { fromSchoolId: school }), t("fam.gradesAsked"))}>{t("common.submit")}</Btn>
-      </Card>
     </Page>
   );
 }

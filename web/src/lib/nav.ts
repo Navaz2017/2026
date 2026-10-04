@@ -16,7 +16,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { href: "/app/institution/programs", key: "nav.programs", icon: "cap" }, { href: "/app/institution/media", key: "nav.gallery", icon: "image" },
     { href: "/app/institution/letters", key: "nav.letters", icon: "mail" }, { href: "/app/institution/grades", key: "nav.grades", icon: "note" },
     { href: "/app/institution/whatsapp", key: "nav.whatsapp", icon: "chat" }, { href: "/app/institution/earnings", key: "nav.earnings", icon: "wallet" },
-    { href: "/app/institution/documents", key: "nav.documents", icon: "folder" }, { href: "/app/security", key: "nav.security", icon: "lock" },
+    { href: "/app/institution/profile", key: "nav.profile", icon: "bank" }, { href: "/app/institution/documents", key: "nav.documents", icon: "folder" }, { href: "/app/security", key: "nav.security", icon: "lock" },
   ],
   PARENT: [
     { href: "/app/family", key: "nav.children", icon: "family" }, { href: "/app/browse", key: "nav.browse", icon: "search" },

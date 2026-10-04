@@ -1,5 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, del, post } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
@@ -29,11 +31,13 @@ function PayForm({ a, info, onDone }: { a: any; info: any; onDone: () => void })
 
 export default function MyApplications() {
   const { t } = useT();
+  const justSubmitted = useSearchParams().get("submitted") === "1";
   const { data, error, loading, reload } = useLoad<any[]>("/me/applications");
   const info = useLoad<any>("/public/payment-info");
   const { busy, msg, run } = useBusy();
   return (
     <Page title={t("nav.myApps")}>
+      {justSubmitted && <Msg kind="ok">{t("fam.started")}</Msg>}
       <Loading error={error} loading={loading} />
       {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
       {data?.length === 0 && <Empty />}
@@ -43,6 +47,7 @@ export default function MyApplications() {
             <div><strong>{a.program.title}</strong> <span className="muted">· {a.program.institution.name}</span><div className="muted">{a.student.fullName}</div></div>
             <Badge ns="st.app" value={a.status} />
           </div>
+          {a.status === "DRAFT" && <div style={{ margin: ".5rem 0" }}><Link className="btn primary" href={`/app/apply?draft=${a.id}`}>{t("fam.continue")}</Link> <Btn kind="ghost" busy={busy} onClick={() => confirmBox(t("fam.withdraw") + "?") && run(async () => { await del(`/me/applications/${a.id}`); await reload(); })}>{t("fam.withdraw")}</Btn></div>}
           <div className="muted">{t("fam.fee")}: {mk(a.feeMinor)} + {t("fam.serviceFee")}: {mk(a.studentServiceFeeMinor)} = <strong>{t("fam.totalToPay")}: {mk(a.totalDueMinor)}</strong></div>
           {a.status === "AWAITING_PAYMENT" && <div style={{ marginTop: ".75rem" }}>
             <h2>{t("fam.payTitle")}</h2>

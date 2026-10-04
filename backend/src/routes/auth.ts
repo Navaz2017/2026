@@ -1,4 +1,6 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
+import { config } from "../config.js";
 import { z } from "zod";
 import { hash, verify } from "@node-rs/argon2";
 import { prisma } from "../db.js";
@@ -11,6 +13,10 @@ import { sendEmail } from "../lib/mailer.js";
 import { audit } from "../lib/audit.js";
 
 export const auth = Router();
+
+// Brute-force protection for credential endpoints only, per client IP (the web app forwards the real client IP).
+// /auth/me, /refresh, notifications etc. are normal authenticated traffic and use the general per-user limiter.
+const strict = rateLimit({ windowMs: 15 * 60_000, limit: config.NODE_ENV === "test" ? 10_000 : 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${req.ip}` });
 
 const password = z.string().min(10).max(128);
 const language = z.enum(["en", "ny", "tum"]).default("en");
@@ -50,6 +56,7 @@ async function issueTokens(user: TokenUser, mfa = false, family = randomToken(16
 
 auth.post(
   "/signup",
+  strict,
   body(signup),
   h(async (req, res) => {
     const d = req.body as z.infer<typeof signup>;
@@ -79,6 +86,7 @@ auth.post(
 
 auth.post(
   "/login",
+  strict,
   body(z.object({ email: z.string().email().toLowerCase(), password: z.string(), code: z.string().regex(/^\d{6}$/).optional() })),
   h(async (req, res) => {
     const user = await prisma.user.findUnique({ where: { email: req.body.email } });
@@ -158,7 +166,7 @@ auth.post("/mfa/enable", authenticate, body(z.object({ code: z.string().regex(/^
 }));
 
 // ---- password reset (always 202: never reveals whether an address is registered)
-auth.post("/forgot", body(z.object({ email: z.string().email().toLowerCase() })), h(async (req, res) => {
+auth.post("/forgot", strict, body(z.object({ email: z.string().email().toLowerCase() })), h(async (req, res) => {
   const u = await prisma.user.findUnique({ where: { email: req.body.email } });
   if (u && !u.disabledAt) {
     const token = randomToken(32);
@@ -169,7 +177,7 @@ auth.post("/forgot", body(z.object({ email: z.string().email().toLowerCase() }))
   res.status(202).json({ ok: true });
 }));
 
-auth.post("/reset", body(z.object({ token: z.string().min(20), password })), h(async (req, res) => {
+auth.post("/reset", strict, body(z.object({ token: z.string().min(20), password })), h(async (req, res) => {
   const r = await prisma.passwordReset.findUnique({ where: { tokenHash: sha256(req.body.token) } });
   if (!r || r.usedAt || r.expiresAt < new Date()) return res.status(400).json({ error: "invalid_token" });
   await prisma.$transaction([

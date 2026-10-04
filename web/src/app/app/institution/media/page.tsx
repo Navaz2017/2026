@@ -1,9 +1,11 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { del, uploadFile } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
 import { Btn, Card, Empty, Field, Loading, Msg, Page, confirmBox, useBusy, useLoad } from "@/lib/ui";
+import { MediaGallery } from "@/components/MediaGallery";
 
 export default function Gallery() {
   const { t } = useT();
@@ -11,7 +13,7 @@ export default function Gallery() {
   const { busy, msg, run } = useBusy();
   const [caption, setCaption] = useState("");
   return (
-    <Page title={t("nav.gallery")}>
+    <Page title={t("nav.gallery")} actions={<Link className="btn primary" href="/app/institution/preview"><Icon name="search" size={18} />{t("sch.preview")}</Link>}>
       <p className="muted">{t("inst.mediaIntro")}</p>
       <Card>
         <Field label={t("inst.caption")}><input value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={200} /></Field>
@@ -27,11 +29,11 @@ export default function Gallery() {
       </Card>
       <Loading error={error} loading={loading} />
       {data?.length === 0 && <Empty />}
-      <div className="grid two">{data?.map((m) => (
+      {data && data.length > 0 && <MediaGallery items={data} showStatus />}
+      <div className="grid two" style={{ marginTop: "1rem" }}>{data?.map((m) => (
         <Card key={m.id}>
-          {m.kind === "VIDEO" ? <video src={m.url} controls style={{ width: "100%", borderRadius: 8 }} /> : <img src={m.url} alt={m.caption ?? ""} style={{ width: "100%", borderRadius: 8 }} />}
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <span>{m.caption}</span>
+            <span>{m.caption ?? "—"}</span>
             <span className={`badge ${m.approved ? "good" : "wait"}`}><Icon name={m.approved ? "check" : "clock"} size={14} />{m.approved ? t("inst.mediaVisible") : t("inst.mediaHidden")}</span>
           </div>
           <Btn kind="danger" onClick={() => confirmBox(t("common.delete") + "?") && run(async () => { await del(`/institution/media/${m.id}`); await reload(); })}>{t("common.delete")}</Btn>

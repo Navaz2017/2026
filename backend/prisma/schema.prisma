@@ -149,6 +149,12 @@ model Institution {
   // Payout details for month-end settlement
   payoutProvider Provider?
   payoutPhone    String?
+  description    String?
+  website        String?
+  campuses       String[] // e.g. Blantyre, Lilongwe, Mzuzu
+  highestLevel   String? // primary/secondary only: STD1..STD8, F1..F6 (highest class the school offers)
+  syllabi        String[] // secondary: MSCE and/or CAMBRIDGE
+  otherFees      Json? // [{ name, amountMinor, period }] e.g. boarding, student union
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -159,6 +165,7 @@ model Institution {
   templates LetterTemplate[]
   whatsapp  WhatsAppSession?
   settlements Settlement[]
+  applications Application[]
   gradeRequestsIn  GradeRequest[] @relation("GradeRequestTo")
   gradeRequestsOut GradeRequest[] @relation("GradeRequestFrom")
 
@@ -189,6 +196,14 @@ model Program {
   seats         Int
   seatsTaken    Int           @default(0)
   applicationFee Int // minor units, set by institution
+  code          String?
+  tuitionFeeMinor Int          @default(0) // what the programme costs to study
+  tuitionPeriod String         @default("SEMESTER") // SEMESTER | YEAR | TERM | PROGRAMME
+  duration      String? // e.g. "4 years"
+  entryRequirements String?
+  modes         String[] // FULL_TIME PART_TIME WEEKEND EVENING ODEL
+  classLevel    String? // schools: STD1..STD8 / F1..F6 — the "programme" is a class level
+  syllabus      String? // schools: MSCE | CAMBRIDGE
   opensAt       DateTime?
   closesAt      DateTime?
   status        ProgramStatus @default(DRAFT)
@@ -196,6 +211,7 @@ model Program {
   updatedAt     DateTime      @updatedAt
 
   applications Application[]
+  choices      ApplicationChoice[]
 
   @@index([institutionId])
   @@index([status, updatedAt])
@@ -238,6 +254,7 @@ model Student {
   gender         String?
   currentSchoolId String? // set when the school is registered on the platform -> enables grade requests
   currentSchoolName String?
+  profile        Json? // reusable bio data (names, ID, district, address, disability ...) entered once
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -267,8 +284,15 @@ model Application {
   id         String            @id @default(uuid())
   studentId  String
   student    Student           @relation(fields: [studentId], references: [id])
-  programId  String
+  institutionId String
+  institution Institution      @relation(fields: [institutionId], references: [id])
+  academicYear String          @default("2026/2027")
+  programId  String // first-choice programme (rank 1)
   program    Program           @relation(fields: [programId], references: [id])
+  offeredProgramId String? // set on acceptance: which choice the institution offers
+  form       Json              @default("{}") // multi-step form answers (education, guardian, sponsor, declaration ...)
+  submittedAt DateTime?
+  choices    ApplicationChoice[]
   status     ApplicationStatus @default(DRAFT)
   statement  String?
   // Fee snapshot taken at creation so later config changes never alter what the applicant owes.
@@ -286,9 +310,22 @@ model Application {
   letter   Letter?
   attachedCredentialIds String[]
 
-  @@unique([studentId, programId])
+  @@unique([studentId, institutionId, academicYear])
   @@unique([clientId])
   @@index([programId, status])
+}
+
+// Ranked programme choices within ONE institution (max 3 for colleges/universities, exactly 1 for schools).
+model ApplicationChoice {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  programId     String
+  program       Program     @relation(fields: [programId], references: [id])
+  rank          Int
+
+  @@unique([applicationId, rank])
+  @@unique([applicationId, programId])
 }
 
 model Payment {
