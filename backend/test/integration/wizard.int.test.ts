@@ -171,3 +171,15 @@ test("tuition is returned publicly; public school page shows only approved media
   const list = await json(await call("GET", "/public/programs"));
   assert.ok(list.every((p: any) => "tuitionFeeMinor" in p && "totalDueMinor" in p));
 });
+
+test("colleges/universities can create a programme with tuition, modes and entry requirements (the dashboard's payload)", { skip }, async () => {
+  const u = await uni([]);
+  // exactly what the web form posts for a university
+  const r = await call("POST", "/institution/programs", u.adminToken, { title: "BSc Nursing", level: "Undergraduate", seats: 30, applicationFee: 1_000_000, tuitionFeeMinor: 90_000_000, tuitionPeriod: "SEMESTER", modes: ["FULL_TIME"], code: "BSN", duration: "4 years", entryRequirements: "Six MSCE credits", description: "x" });
+  assert.equal(r.status, 201, await r.clone().text());
+  const p = await json(r);
+  assert.deepEqual([p.title, p.tuitionFeeMinor, p.status, p.classLevel], ["BSc Nursing", 90_000_000, "ACTIVE", null]);
+  // minimal payload (all optional fields left out / empty)
+  const min = await call("POST", "/institution/programs", u.adminToken, { title: "Diploma in IT", level: "Diploma", seats: 20, applicationFee: 500_000, tuitionFeeMinor: 0, tuitionPeriod: "YEAR", modes: [] });
+  assert.equal(min.status, 201, await min.clone().text());
+});
