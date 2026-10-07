@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 // Backend-for-frontend for the endpoints that mint refresh tokens. The refresh token is put in an
 // httpOnly, SameSite=Strict cookie scoped to /api/auth and is NEVER returned to page JavaScript.
 const API = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const PATHS: Record<string, string> = { login: "/auth/login", signup: "/auth/signup", refresh: "/auth/refresh", "mfa-enable": "/auth/mfa/enable", logout: "/auth/logout" };
-const COOKIE = "rt";
+const PATHS: Record<string, string> = { login: "/auth/login", signup: "/auth/signup", refresh: "/auth/refresh", "mfa-enable": "/auth/mfa/enable", "change-password": "/auth/change-password", logout: "/auth/logout" };
+const COOKIE = "rt"; // COOKIE_SECURE=false only for a plain-http LAN install; use HTTPS whenever the site is reachable from the internet
 const clientIp = (req: NextRequest) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || undefined;
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ action: string }> }) {
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ act
   const { refreshToken, ...safe } = data as Record<string, unknown>;
   const res = NextResponse.json(safe, { status: upstream.status === 204 ? 200 : upstream.status });
   if (typeof refreshToken === "string") {
-    res.cookies.set(COOKIE, refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/api/auth", maxAge: 30 * 86400 });
+    res.cookies.set(COOKIE, refreshToken, { httpOnly: true, secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : process.env.NODE_ENV === "production", sameSite: "strict", path: "/api/auth", maxAge: 30 * 86400 });
   }
   if (action === "logout" || (action === "refresh" && !upstream.ok)) res.cookies.delete({ name: COOKIE, path: "/api/auth" });
   return res;

@@ -187,7 +187,22 @@ try {
   const rt = cookies.find((c) => c.name === "rt");
   check("refresh token cookie is httpOnly + SameSite=Strict", !!rt && rt.httpOnly && rt.sameSite === "Strict");
   check("refresh token not readable by page scripts", !(await page.evaluate(() => document.cookie)).includes("rt="));
+  // ---- parent changes password (signed in) -> other sessions out, new password works
+  await page.getByRole("link", { name: "Chitetezo" }).click();
+  await page.waitForSelector("text=Sinthani mawu achinsinsi");
+  await page.locator("label.field", { hasText: "Mawu achinsinsi amakono" }).locator("input").fill("very-long-password-1");
+  await page.locator("label.field", { hasText: "Mawu achinsinsi atsopano" }).locator("input").fill("another-long-password-2");
+  await page.locator("form button.btn").click();
+  await page.waitForSelector("text=Mawu achinsinsi asinthidwa");
+  check("parent changed password (Chichewa message); session stays signed in", true);
+  await page.reload(); await page.waitForSelector("nav.side");
+  check("still signed in after reload with the NEW refresh cookie", (await page.locator("nav.side").innerText()).includes("Ana anga"));
   await ctx.close();
+  { const { ctx: c2, page: p2 } = await fresh(); await p2.goto(BASE + "/login");
+    await p2.fill('input[name=email]', "mayi@example.mw"); await p2.fill('input[name=password]', "very-long-password-1"); await p2.click("form button.btn.primary");
+    check("old password no longer works", (await p2.locator(".msg.err").waitFor({ timeout: 8000 }).then(() => true).catch(() => false)));
+    await p2.fill('input[name=password]', "another-long-password-2"); await p2.click("form button.btn.primary"); await p2.waitForURL(/\/app\//, { timeout: 15000 });
+    check("new password works", true); await c2.close(); }
 
   // 3. owner: MFA login, dashboard + all six screens
   ({ ctx, page } = await fresh());
@@ -215,7 +230,25 @@ try {
   check("owner sees the newly registered parent", true);
   await page.click('nav.side a[href="/app/owner/revenue"]'); await page.waitForSelector('input[type=number]');
   check("revenue defaults 30% / 30%", (await page.locator('input[type=number]').nth(0).inputValue()) === "30" && (await page.locator('input[type=number]').nth(1).inputValue()) === "30");
+  await page.goto(BASE + "/app/security"); await page.waitForSelector('[data-testid="codes-left"]');
+  await page.locator("header").getByRole("button", { name: "English" }).click();
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: /Create new codes/ }).click();
+  await page.waitForSelector('[data-testid="recovery-codes"]');
+  const codes = (await page.locator('[data-testid="recovery-codes"] div').allTextContents()).map((x) => x.trim());
+  check("owner gets 8 recovery codes", codes.length === 8 && codes.every((c) => /^[a-z0-9]{4}-[a-z0-9]{4}$/.test(c)), codes.join(","));
   await ctx.close();
+  { // lost phone: sign in with a recovery code instead of the authenticator
+    const { ctx: c3, page: p3 } = await fresh(); await p3.goto(BASE + "/login");
+    await p3.fill('input[name=email]', "owner@enrolla.test"); await p3.fill('input[name=password]', "Passw0rd-demo1"); await p3.click("form button.btn.primary");
+    await p3.waitForSelector('input[name=code]'); await p3.fill('input[name=code]', codes[0]); await p3.click("form button.btn.primary");
+    await p3.waitForURL(/\/app\/owner/, { timeout: 15000 });
+    check("owner signs in with a recovery code (no authenticator)", true);
+    await p3.getByRole("button", { name: "Sign out" }).click(); await p3.waitForURL(/\/login/);
+    await p3.fill('input[name=email]', "owner@enrolla.test"); await p3.fill('input[name=password]', "Passw0rd-demo1"); await p3.click("form button.btn.primary");
+    await p3.waitForSelector('input[name=code]'); await p3.fill('input[name=code]', codes[0]); await p3.click("form button.btn.primary");
+    check("the same recovery code cannot be used twice", await p3.locator(".msg.err").waitFor({ timeout: 8000 }).then(() => true).catch(() => false));
+    await c3.close(); }
 
   // 4. institution: review applicant, view credential, accept
   ({ ctx, page } = await fresh());

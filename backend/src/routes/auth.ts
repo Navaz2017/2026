@@ -5,7 +5,8 @@ import { z } from "zod";
 import { hash, verify } from "@node-rs/argon2";
 import { prisma } from "../db.js";
 import { body, h } from "../middleware/validate.js";
-import { authenticate, signAccess } from "../middleware/auth.js";
+import { authenticate, requireMfa, signAccess } from "../middleware/auth.js";
+import crypto from "node:crypto";
 import { randomToken, sha256 } from "../lib/crypto.js";
 import { normalisePhone } from "../lib/phone.js";
 import { newSecret, verifyCode } from "../lib/totp.js";
@@ -44,6 +45,19 @@ const signup = z.discriminatedUnion("role", [
 
 const ARGON = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
 const REFRESH_DAYS = 30;
+
+// 8 single-use codes like "k3f9-a7qm". Only hashes are stored.
+const RECOVERY_RE = /^[a-z0-9]{4}-[a-z0-9]{4}$/i;
+const normaliseRecovery = (c: string) => c.trim().toLowerCase();
+async function newRecoveryCodes(userId: string) {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"; // no look-alike characters (0/o, 1/l/i)
+  const codes = Array.from({ length: 8 }, () => { const b = crypto.randomBytes(8); const c = Array.from(b, (x) => alphabet[x % alphabet.length]).join(""); return `${c.slice(0, 4)}-${c.slice(4)}`; });
+  await prisma.$transaction([
+    prisma.mfaRecoveryCode.deleteMany({ where: { userId } }),
+    prisma.mfaRecoveryCode.createMany({ data: codes.map((c) => ({ userId, codeHash: sha256(c) })) }),
+  ]);
+  return codes;
+}
 
 type TokenUser = { id: string; role: any; institutionId: string | null };
 async function issueTokens(user: TokenUser, mfa = false, family = randomToken(16)) {
@@ -87,7 +101,7 @@ auth.post(
 auth.post(
   "/login",
   strict,
-  body(z.object({ email: z.string().email().toLowerCase(), password: z.string(), code: z.string().regex(/^\d{6}$/).optional() })),
+  body(z.object({ email: z.string().email().toLowerCase(), password: z.string(), code: z.string().regex(/^(\d{6}|[A-Za-z0-9]{4}-[A-Za-z0-9]{4})$/).optional() })),
   h(async (req, res) => {
     const user = await prisma.user.findUnique({ where: { email: req.body.email } });
     const fail = () => res.status(401).json({ error: "invalid_credentials" });
@@ -102,7 +116,12 @@ auth.post(
     let mfa = false;
     if (user.mfaEnabled && user.mfaSecret) {
       if (!req.body.code) return res.status(401).json({ error: "mfa_required" }); // password was right; ask for the code
-      if (!verifyCode(user.mfaSecret, req.body.code)) return bad(); // wrong codes count toward lockout
+      if (RECOVERY_RE.test(req.body.code)) {
+        // lost phone: a recovery code works exactly once
+        const used = await prisma.mfaRecoveryCode.updateMany({ where: { userId: user.id, codeHash: sha256(normaliseRecovery(req.body.code)), usedAt: null }, data: { usedAt: new Date() } });
+        if (used.count !== 1) return bad();
+        await prisma.auditLog.create({ data: { actorId: user.id, action: "mfa.recovery_code_used", entity: "User", entityId: user.id, ip: req.ip } });
+      } else if (!verifyCode(user.mfaSecret, req.body.code)) return bad(); // wrong codes count toward lockout
       mfa = true;
     }
     await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
@@ -138,7 +157,8 @@ auth.post(
 // ---- profile & language
 auth.get("/me", authenticate, h(async (req, res) => {
   const u = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.sub } });
-  res.json({ id: u.id, email: u.email, fullName: u.fullName, role: u.role, language: u.language, mfaEnabled: u.mfaEnabled, mfa: !!req.user!.mfa, institutionId: u.institutionId });
+  const recoveryCodesLeft = u.mfaEnabled ? await prisma.mfaRecoveryCode.count({ where: { userId: u.id, usedAt: null } }) : 0;
+  res.json({ id: u.id, email: u.email, fullName: u.fullName, role: u.role, language: u.language, mfaEnabled: u.mfaEnabled, mfa: !!req.user!.mfa, institutionId: u.institutionId, recoveryCodesLeft });
 }));
 
 auth.patch("/me", authenticate, body(z.object({ language: z.enum(["en", "ny", "tum"]) })), h(async (req, res) => {
@@ -162,7 +182,7 @@ auth.post("/mfa/enable", authenticate, body(z.object({ code: z.string().regex(/^
   await audit(req, "mfa.enable", "User", u.id);
   // Fresh session whose tokens carry mfa=true; the old (non-MFA) refresh family is revoked.
   await prisma.refreshToken.updateMany({ where: { userId: u.id }, data: { revokedAt: new Date() } });
-  res.json(await issueTokens(u, true));
+  res.json({ ...(await issueTokens(u, true)), recoveryCodes: await newRecoveryCodes(u.id) }); // shown once
 }));
 
 // ---- password reset (always 202: never reveals whether an address is registered)
@@ -171,7 +191,7 @@ auth.post("/forgot", strict, body(z.object({ email: z.string().email().toLowerCa
   if (u && !u.disabledAt) {
     const token = randomToken(32);
     await prisma.passwordReset.create({ data: { userId: u.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + 3600_000) } });
-    const link = `${process.env.WEB_URL ?? "http://localhost:3000"}/reset?token=${token}`;
+    const link = `${config.WEB_URL}/reset?token=${token}`;
     await sendEmail(u.email, "Reset your Enrolla password", `Open this link within 1 hour to choose a new password:\n${link}\n\nIf you did not ask for this, ignore this message.`);
   }
   res.status(202).json({ ok: true });
@@ -195,4 +215,23 @@ auth.get("/notifications", authenticate, h(async (req, res) => {
 auth.post("/notifications/read", authenticate, h(async (req, res) => {
   await prisma.notification.updateMany({ where: { userId: req.user!.sub, readAt: null }, data: { readAt: new Date() } });
   res.status(204).end();
+}));
+
+// New recovery codes (replaces any unused ones). Needs a session that already passed the authenticator check.
+auth.post("/mfa/recovery-codes", authenticate, requireMfa, h(async (req, res) => {
+  await audit(req, "mfa.recovery_codes_regenerated", "User", req.user!.sub);
+  res.json({ recoveryCodes: await newRecoveryCodes(req.user!.sub) });
+}));
+
+// Change password while signed in. Signs out every other device.
+auth.post("/change-password", authenticate, strict, body(z.object({ currentPassword: z.string().min(1), newPassword: password })), h(async (req, res) => {
+  const u = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.sub } });
+  if (!(await verify(u.passwordHash, req.body.currentPassword))) return res.status(400).json({ error: "wrong_password" });
+  if (req.body.currentPassword === req.body.newPassword) return res.status(400).json({ error: "same_password" });
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: u.id }, data: { passwordHash: await hash(req.body.newPassword, ARGON) } }),
+    prisma.refreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+  ]);
+  await audit(req, "password.change", "User", u.id);
+  res.json(await issueTokens(u, !!req.user!.mfa)); // this device stays signed in
 }));

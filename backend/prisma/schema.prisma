@@ -90,8 +90,21 @@ model User {
   student       Student?
   refreshTokens RefreshToken[]
   resets        PasswordReset[]
+  recoveryCodes MfaRecoveryCode[]
 
   @@index([role])
+}
+
+// One-time codes for when the authenticator phone is lost. Stored hashed; shown to the user once.
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model PasswordReset {

@@ -249,6 +249,19 @@ admin.post("/users/:id/disable", h(async (req, res) => {
   res.status(204).end();
 }));
 
+// A school staff member lost their phone and has no recovery codes: the owner turns off their two-step security;
+// they sign in with their password and set it up again. Audited. (Owners reset their own via scripts/reset-mfa.ts on the server.)
+admin.post("/users/:id/reset-mfa", h(async (req, res) => {
+  if (req.params.id === req.user!.sub) return res.status(400).json({ error: "cannot_reset_self" });
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: req.params.id }, data: { mfaEnabled: false, mfaSecret: null } }),
+    prisma.mfaRecoveryCode.deleteMany({ where: { userId: req.params.id } }),
+    prisma.refreshToken.updateMany({ where: { userId: req.params.id }, data: { revokedAt: new Date() } }),
+  ]);
+  await audit(req, "user.reset_mfa", "User", req.params.id);
+  res.status(204).end();
+}));
+
 admin.post("/users/:id/enable", h(async (req, res) => {
   await prisma.user.update({ where: { id: req.params.id }, data: { disabledAt: null, failedLogins: 0, lockedUntil: null } });
   await audit(req, "user.enable", "User", req.params.id);

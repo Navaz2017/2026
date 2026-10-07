@@ -29,7 +29,7 @@ export default function Login() {
         <h1>{t("auth.signIn")}</h1>
         <Field label={t("common.email")}><input name="email" type="email" required autoComplete="username" inputMode="email" /></Field>
         <Field label={t("common.password")}><input name="password" type="password" required autoComplete="current-password" /></Field>
-        {needCode && <Field label={t("auth.mfaCode")}><input name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required autoFocus /></Field>}
+        {needCode && <><Field label={t("auth.mfaCodeOrRecovery")}><input name="code" maxLength={9} autoComplete="one-time-code" autoCapitalize="none" required autoFocus /></Field><p className="muted" style={{ marginTop: "-.4rem" }}>{t("auth.lostPhone")}</p></>}
         <Msg kind="err">{err}</Msg>
         <Btn kind="primary" busy={busy} style={{ width: "100%" }}>{t("auth.signIn")}</Btn>
         <p><Link href="/forgot">{t("auth.forgot")}</Link></p>

@@ -1,3 +1,5 @@
+import { sha256Hex } from "./sha256";
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export type Role = "SYSTEM_OWNER" | "INSTITUTION_ADMIN" | "PARENT" | "STUDENT";
 
@@ -42,7 +44,7 @@ export const del = <T = any>(path: string) => api<T>(path, { method: "DELETE" })
 export async function uploadFile(urlPath: string, confirmPath: string, file: File, extra: Record<string, unknown> = {}) {
   const slot = await post(urlPath, { mime: file.type, size: file.size, ...extra });
   const buf = await file.arrayBuffer();
-  const sha = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buf))).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const sha = await sha256Hex(buf);
   const put = await fetch(slot.url, { method: "PUT", headers: slot.headers, body: buf });
   if (!put.ok) throw new ApiError(put.status, "internal");
   return post(confirmPath, { key: slot.key, sha256: sha, mime: file.type, size: file.size, ...extra });

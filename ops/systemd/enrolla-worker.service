@@ -1,0 +1,21 @@
+[Unit]
+Description=Enrolla background jobs (decision letters, email)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+User=enrolla
+Group=enrolla
+WorkingDirectory=/opt/enrolla/backend
+EnvironmentFile=/etc/enrolla/backend.env
+ExecStart=/usr/bin/node dist/src/jobs/worker.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/enrolla /var/log/enrolla
+
+[Install]
+WantedBy=multi-user.target

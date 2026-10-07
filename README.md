@@ -80,6 +80,8 @@ One shell, role-based menus (owner · institution · parent · student), in **Ch
 - **Institution:** overview · applicants (search/filter) with full file, **credential viewer** (MFA-gated, audited, 60 s links) and **accept/reject** (seat-limited, letter queued) · programmes · campus gallery · letter templates with preview · grade requests · **WhatsApp linking** (QR) · earnings & payout details · verification documents.
 - **Parent/student:** register children + occupation · find school/course · apply · pay (shows the Airtel/Mpamba number, reference + phone form, confirmation message) · documents upload · request grades from a previous school · download decision letter · notifications.
 
+Account safety: change password (signs out other devices), 8 one-time **recovery codes** for a lost authenticator phone, owner can reset staff two-step security, server-side `reset-mfa` script for the owner.
+
 Security details: refresh token only in an httpOnly SameSite=Strict cookie via a Next route handler; nonce-based CSP; MFA (TOTP) required for the owner and for institution admins' sensitive actions; password reset by email; consent captured at signup; seat counting is atomic.
 
 ### Run it
@@ -98,6 +100,9 @@ cd web && npm install && npm run dev                   # web on http://localhost
 Demo logins (password `Passw0rd-demo1`): `owner@enrolla.test`, `school@enrolla.test` (both ask for a 6-digit code: add secret `JBSWY3DPEHPK3PXP` to an authenticator app), `student@enrolla.test`. Parents/students/schools can also sign up at `/signup`.
 Letters and WhatsApp need the extra processes `npm run dev:worker` / `npm run dev:wa` (Redis required; WhatsApp also needs Chromium).
 Tests: `cd backend && npm test && npm run test:int` · `node shared/i18n/sync.mjs` · `cd e2e && bash run.sh`.
+
+## Running on your own server
+`docs/deploy-t620.md` is a step-by-step guide for a Dell T620 (Ubuntu, local PostgreSQL, local file storage, SMTP email, nightly backups, systemd, HTTPS options) — no cloud services needed. Config templates are in `ops/`.
 
 ## Look & feel
 University-style design system (see `web/src/app/globals.css`): deep navy + gold accent on white, **Source Serif 4** headings with **Source Sans 3** body (both self-hosted via `@fontsource`, so no third-party font requests and the strict CSP stays intact), a single shared header on the public site and the signed-in app, a public landing page with live programme search, split-panel sign-in, line icons instead of emoji, flat cards with hairline borders, underline tabs, WCAG-minded contrast, 44 px touch targets, skip-link, visible focus rings, dark-mode tokens. **English is the default language** and the first option in every language switcher (then Chichewa, Chitumbuka).

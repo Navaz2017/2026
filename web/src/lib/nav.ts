@@ -20,10 +20,10 @@ export const NAV: Record<Role, NavItem[]> = {
   ],
   PARENT: [
     { href: "/app/family", key: "nav.children", icon: "family" }, { href: "/app/browse", key: "nav.browse", icon: "search" },
-    { href: "/app/family/applications", key: "nav.myApps", icon: "inbox" }, { href: "/app/family/documents", key: "nav.myDocs", icon: "folder" },
+    { href: "/app/family/applications", key: "nav.myApps", icon: "inbox" }, { href: "/app/family/documents", key: "nav.myDocs", icon: "folder" }, { href: "/app/security", key: "nav.security", icon: "lock" },
   ],
   STUDENT: [
     { href: "/app/browse", key: "nav.browse", icon: "search" }, { href: "/app/family/applications", key: "nav.myApps", icon: "inbox" },
-    { href: "/app/family/documents", key: "nav.myDocs", icon: "folder" },
+    { href: "/app/family/documents", key: "nav.myDocs", icon: "folder" }, { href: "/app/security", key: "nav.security", icon: "lock" },
   ],
 };

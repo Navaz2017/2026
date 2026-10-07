@@ -1,11 +1,11 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto, { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 
-const s3 = new S3Client({ region: config.S3_REGION });
+// Optional: only loaded when STORAGE_DRIVER=s3 (the AWS SDK packages are optional dependencies).
+let s3Mod: Promise<{ s3: import("@aws-sdk/client-s3").S3Client; S3: typeof import("@aws-sdk/client-s3"); sign: typeof import("@aws-sdk/s3-request-presigner").getSignedUrl }> | undefined;
+const aws = () => (s3Mod ??= (async () => { const S3 = await import("@aws-sdk/client-s3"); const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner"); return { s3: new S3.S3Client({ region: config.S3_REGION }), S3, sign: getSignedUrl }; })());
 const local = config.STORAGE_DRIVER === "local";
 
 const ALLOWED: Record<string, number> = {
@@ -47,23 +47,27 @@ export async function presignUpload(prefix: string, mime: string, size: number) 
   if (!max || size > max) throw new Error("File type or size not allowed");
   const key = `${prefix}/${randomUUID()}`;
   if (local) return { key, url: `${config.PUBLIC_API_URL}/v1/files/put/${sign({ op: "put", key, mime, size, exp: Date.now() + 300_000 })}`, headers: { "Content-Type": mime } };
-  const url = await getSignedUrl(s3, new PutObjectCommand({ Bucket: config.S3_BUCKET, Key: key, ContentType: mime, ContentLength: size }), { expiresIn: 300 });
+  const { s3, S3, sign: signUrl } = await aws();
+  const url = await signUrl(s3, new S3.PutObjectCommand({ Bucket: config.S3_BUCKET, Key: key, ContentType: mime, ContentLength: size }), { expiresIn: 300 });
   return { key, url, headers: { "Content-Type": mime } };
 }
 
-export const presignDownload = async (key: string, seconds = 120) =>
-  local
-    ? `${config.PUBLIC_API_URL}/v1/files/get/${sign({ op: "get", key, exp: Date.now() + seconds * 1000 })}`
-    : getSignedUrl(s3, new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }), { expiresIn: seconds });
+export async function presignDownload(key: string, seconds = 120) {
+  if (local) return `${config.PUBLIC_API_URL}/v1/files/get/${sign({ op: "get", key, exp: Date.now() + seconds * 1000 })}`;
+  const { s3, S3, sign: signUrl } = await aws();
+  return signUrl(s3, new S3.GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }), { expiresIn: seconds });
+}
 
 // Server-side writes (generated letters).
 export async function putObject(key: string, data: Buffer, mime: string) {
   if (local) return localWrite(key, data, mime);
-  await s3.send(new PutObjectCommand({ Bucket: config.S3_BUCKET, Key: key, Body: data, ContentType: mime }));
+  const { s3, S3 } = await aws();
+  await s3.send(new S3.PutObjectCommand({ Bucket: config.S3_BUCKET, Key: key, Body: data, ContentType: mime }));
 }
 
 export async function getObject(key: string): Promise<Buffer> {
   if (local) return localRead(key);
-  const r = await s3.send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+  const { s3, S3 } = await aws();
+  const r = await s3.send(new S3.GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
   return Buffer.from(await r.Body!.transformToByteArray());
 }

@@ -1,0 +1,12 @@
+[Unit]
+Description=Enrolla nightly backup
+
+[Service]
+Type=oneshot
+User=enrolla
+Group=enrolla
+Environment=ENV_FILE=/etc/enrolla/backend.env
+Environment=BACKUP_DIR=/var/backups/enrolla
+# Copy to a DIFFERENT physical disk too (e.g. a USB drive mounted at /mnt/backup). Remove this line if you have none yet.
+Environment=COPY_TO=/mnt/backup/enrolla
+ExecStart=/opt/enrolla/ops/backup.sh

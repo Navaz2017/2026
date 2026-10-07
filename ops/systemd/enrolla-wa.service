@@ -1,0 +1,22 @@
+[Unit]
+Description=Enrolla WhatsApp sessions (run exactly ONE instance)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+User=enrolla
+Group=enrolla
+WorkingDirectory=/opt/enrolla/backend
+EnvironmentFile=/etc/enrolla/backend.env
+ExecStart=/usr/bin/node dist/src/jobs/wa-worker.js
+Restart=always
+RestartSec=10
+# each linked school runs a headless browser; keep a ceiling so it cannot starve the rest of the server
+MemoryMax=8G
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectHome=true
+ReadWritePaths=/var/lib/enrolla /var/log/enrolla
+
+[Install]
+WantedBy=multi-user.target

@@ -3,8 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { api, getAccessToken, refreshSession, setAccessToken, patch, type Role } from "./api";
 import { useT, type Lang } from "./i18n";
 
-export interface User { id: string; email: string; fullName: string; role: Role; language: Lang; mfaEnabled: boolean; mfa: boolean; institutionId: string | null }
-interface Ctx { user: User | null; loading: boolean; reload: () => Promise<void>; signIn: (path: "login" | "signup" | "mfa-enable", body: unknown) => Promise<void>; signOut: () => Promise<void>; changeLanguage: (l: Lang) => void }
+export interface User { id: string; email: string; fullName: string; role: Role; language: Lang; mfaEnabled: boolean; mfa: boolean; institutionId: string | null; recoveryCodesLeft?: number }
+interface Ctx { user: User | null; loading: boolean; reload: () => Promise<void>; signIn: (path: "login" | "signup" | "mfa-enable" | "change-password", body: unknown) => Promise<any>; signOut: () => Promise<void>; changeLanguage: (l: Lang) => void }
 const Session = createContext<Ctx>(null as never);
 export const useSession = () => useContext(Session);
 
@@ -34,12 +34,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [reload]);
 
   const signIn: Ctx["signIn"] = async (path, body) => {
-    const headers: Record<string, string> = { "Content-Type": "application/json", ...(path === "mfa-enable" && { Authorization: `Bearer ${getAccessToken()}` }) };
+    const headers: Record<string, string> = { "Content-Type": "application/json", ...((path === "mfa-enable" || path === "change-password") && { Authorization: `Bearer ${getAccessToken()}` }) };
     const r = await fetch(`/api/auth/${path}`, { method: "POST", headers, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw Object.assign(new Error(data.error ?? "internal"), { code: data.error ?? "internal", status: r.status });
     setAccessToken(data.accessToken);
     await reload();
+    return data;
   };
 
   const signOut = async () => { await fetch("/api/auth/logout", { method: "POST" }); setAccessToken(null); setUser(null); window.location.href = "/login"; };
