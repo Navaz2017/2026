@@ -1,9 +1,9 @@
 -- Puts the e2e database back to the seeded state so the browser test can be re-run.
 TRUNCATE "Device","DeviceNonce" CASCADE;
-DELETE FROM "GradeRequest" WHERE "studentId" IN (SELECT s.id FROM "Student" s JOIN "ParentProfile" p ON p.id = s."parentId" JOIN "User" u ON u.id = p."userId" WHERE u.phone = '+265999555001');
-DELETE FROM "Application" WHERE "studentId" IN (SELECT s.id FROM "Student" s JOIN "ParentProfile" p ON p.id = s."parentId" JOIN "User" u ON u.id = p."userId" WHERE u.phone = '+265999555001');
-DELETE FROM "Student" WHERE "parentId" IN (SELECT p.id FROM "ParentProfile" p JOIN "User" u ON u.id = p."userId" WHERE u.phone = '+265999555001');
-DELETE FROM "User" WHERE phone = '+265999555001';
+DELETE FROM "GradeRequest" WHERE "studentId" IN (SELECT s.id FROM "Student" s JOIN "ParentProfile" p ON p.id = s."parentId" JOIN "User" u ON u.id = p."userId" WHERE u.phone IN ('+265999555001','+265999555777'));
+DELETE FROM "Application" WHERE "studentId" IN (SELECT s.id FROM "Student" s JOIN "ParentProfile" p ON p.id = s."parentId" JOIN "User" u ON u.id = p."userId" WHERE u.phone IN ('+265999555001','+265999555777'));
+DELETE FROM "Student" WHERE "parentId" IN (SELECT p.id FROM "ParentProfile" p JOIN "User" u ON u.id = p."userId" WHERE u.phone IN ('+265999555001','+265999555777'));
+DELETE FROM "User" WHERE phone IN ('+265999555001','+265999555777');
 UPDATE "Application" SET status = 'SUBMITTED', "decidedAt" = NULL, "offeredProgramId" = NULL;
 UPDATE "Program" SET "seatsTaken" = 0;
 DELETE FROM "WhatsAppSession";

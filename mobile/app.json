@@ -1,1 +1,16 @@
-{ "expo": { "name": "Admissions", "slug": "admissions", "scheme": "admissions", "version": "0.1.0", "plugins": ["expo-router", "expo-secure-store"], "ios": { "bundleIdentifier": "com.example.admissions" }, "android": { "package": "com.example.admissions" } } }
+{
+  "expo": {
+    "name": "Enrolla",
+    "slug": "enrolla",
+    "scheme": "enrolla",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": ["expo-router", "expo-secure-store", "expo-document-picker", ["expo-image-picker", { "photosPermission": "Enrolla needs your photos so you can attach a school report or certificate." }]],
+    "ios": { "bundleIdentifier": "mw.enrolla.app", "supportsTablet": true },
+    "android": { "package": "mw.enrolla.app" },
+    "web": { "bundler": "metro", "output": "single" },
+    "experiments": { "typedRoutes": false }
+  }
+}

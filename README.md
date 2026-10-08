@@ -13,7 +13,7 @@ e2e/        Real-browser (Playwright) end-to-end test of the web app
 shared/i18n/  Chichewa / Tumbuka / English strings (single source) + checker
 docs/       i18n.md (translation review!), whatsapp.md
 sms-forwarder/  Native Android app that forwards Airtel/Mpamba payment SMS (see its README)
-mobile/    Expo (iOS + Android, build with EAS) — SQLite local-first store, outbox, delta sync
+mobile/    Expo app for parents & students (iOS + Android) — offline cache + write queue, OTP sign-up, full application wizard, payment
 docker-compose.yml   Postgres + Redis for local dev
 ```
 
@@ -70,7 +70,9 @@ dependency scanning (Dependabot/`npm audit`) and an independent penetration test
 ## Known gaps / decisions for you
 - **SMS reader app:** built in `sms-forwarder/`. The pure logic is tested; the Android shell (receiver, WorkManager, UI) has **not been compiled or run on a device** yet — build it in Android Studio and do a real-phone test first.
 - **SMS wording:** parser now covers the real Airtel (bank credit, wallet deposit) and Mpamba (money received) samples; outgoing messages are ignored. Airtel deposits carry no phone number, so Airtel is verified by unique transaction id + amount (see `sms-forwarder/README.md`). Add new wordings as you meet them (e.g. other banks, agent deposits, amounts with decimals).
-- Not yet built: **mobile app screens** (the offline sync engine and i18n module exist; no UI yet), malware scanning of uploads, push notifications, refunds, official WhatsApp Cloud API, PDF letterhead logos, a seeded owner-invite flow. Email uses AWS SES in production (set `SES_FROM`); WhatsApp uses whatsapp-web.js (see `docs/whatsapp.md`).
+- **Mobile app** (`mobile/`, see its README): built and bundled for Android + web, 6 unit tests + a 19-step Playwright run of its web build against the real API (sign-up, OTP, wizard, offline queue, payment). **Not run on a real phone or in Expo Go / iOS Simulator** — do that before release.
+- **Phone verification** (`docs/phone-verification.md`): codes by the platform's WhatsApp number (whatsapp-web.js) with Africa's Talking SMS fallback. Needs real WhatsApp/Africa's Talking accounts to test for real; the code paths are tested against a fake Africa's Talking server and a simulated wa-worker.
+- Not yet built: malware scanning of uploads, push notifications, refunds, official WhatsApp Cloud API, PDF letterhead logos, a seeded owner-invite flow. Email uses plain SMTP (set `SMTP_*`); WhatsApp uses whatsapp-web.js (see `docs/whatsapp.md`).
 - Backend typechecks; 10 unit tests and 11 end-to-end tests (real Postgres: payment↔SMS matching in both orders, single-use references, signature/replay checks, access control) pass. Initial migration is in `backend/prisma/migrations`.
 
 
