@@ -11,10 +11,7 @@ const producerRedis = new Redis(config.REDIS_URL, {
 });
 producerRedis.on("error", () => {});
 
-export interface WaJob { institutionId: string; to: string; text: string; letterId?: string; attachment?: { key: string; filename: string } }
-
 export const letterQueue = new Queue<{ applicationId: string }>("letters", { connection: producerRedis });
-export const waQueue = new Queue<WaJob>("wa-send", { connection: producerRedis });
 
 // Never throws and never blocks for long: the decision is already committed, and BullMQ's add() would otherwise
 // wait indefinitely for Redis. If the job cannot be queued the sweeper in worker.ts re-queues it within a minute.

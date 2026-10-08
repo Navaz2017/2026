@@ -10,6 +10,9 @@ import { audit } from "../lib/audit.js";
 import { normalisePhone } from "../lib/phone.js";
 import { announce, reconcile } from "../lib/reconcile.js";
 import { notifyUsers, applicantUserIds } from "../lib/notify.js";
+import { sendPlatformMessage } from "../lib/messaging.js";
+import { smsConfigured } from "../lib/sms.js";
+import { config } from "../config.js";
 
 export const admin = Router();
 admin.use(authenticate, requireRole("SYSTEM_OWNER"), requireMfa);
@@ -271,4 +274,29 @@ admin.post("/users/:id/enable", h(async (req, res) => {
 admin.get("/audit", h(async (req, res) => {
   const action = typeof req.query.action === "string" ? req.query.action.slice(0, 60) : undefined;
   res.json(await prisma.auditLog.findMany({ where: action ? { action: { startsWith: action } } : {}, orderBy: { createdAt: "desc" }, take: 300 }));
+}));
+
+// ---- Messaging: the platform's own WhatsApp number (verification codes) and the SMS fallback
+admin.get("/messaging", h(async (_req, res) => {
+  const w = await prisma.platformWhatsApp.findUnique({ where: { id: "platform" } });
+  res.set("Cache-Control", "no-store").json({
+    whatsapp: w ? { desired: w.desired, status: w.status, qr: w.status === "QR" ? w.qr : null, phone: w.phone, lastError: w.lastError } : { desired: false, status: "DISCONNECTED", qr: null, phone: null, lastError: null },
+    sms: { configured: smsConfigured(), env: config.AT_ENV, senderId: config.AT_SENDER_ID ?? null },
+  });
+}));
+admin.post("/messaging/whatsapp/connect", h(async (req, res) => {
+  await prisma.platformWhatsApp.upsert({ where: { id: "platform" }, create: { desired: true, status: "STARTING" }, update: { desired: true, status: "STARTING", lastError: null, qr: null } });
+  await audit(req, "platform_whatsapp.connect", "Setting", "platform");
+  res.status(202).json({ ok: true });
+}));
+admin.post("/messaging/whatsapp/disconnect", h(async (req, res) => {
+  await prisma.platformWhatsApp.updateMany({ where: { id: "platform" }, data: { desired: false } });
+  await audit(req, "platform_whatsapp.disconnect", "Setting", "platform");
+  res.status(202).json({ ok: true });
+}));
+admin.post("/messaging/test", body(z.object({ phone: z.string().min(6).max(20) })), h(async (req, res) => {
+  const phone = normalisePhone(req.body.phone);
+  if (!phone) return res.status(400).json({ error: "invalid_phone" });
+  const channel = await sendPlatformMessage(phone, "Enrolla test message: WhatsApp/SMS delivery works.");
+  res.json({ channel }); // null = neither channel could deliver
 }));

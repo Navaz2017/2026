@@ -28,12 +28,12 @@ async function uni(programs: { title: string; fee: number; modes?: string[] }[],
   const inst = await prisma.institution.create({ data: { name: `College ${i}`, type: "COLLEGE", contactEmail: `c${i}@x.mw`, status: "VERIFIED", campuses } });
   const progs = [];
   for (const p of programs) progs.push(await prisma.program.create({ data: { institutionId: inst.id, title: p.title, level: "Degree", seats: 5, applicationFee: p.fee, tuitionFeeMinor: 80_000_000, tuitionPeriod: "SEMESTER", duration: "4 years", modes: p.modes ?? ["FULL_TIME"], status: "ACTIVE" } }));
-  const admin = await prisma.user.create({ data: { email: `ca${i}@x.mw`, passwordHash: "x", role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
+  const admin = await prisma.user.create({ data: { email: `ca${i}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
   return { inst, progs, adminToken: signAccess({ sub: admin.id, role: "INSTITUTION_ADMIN", inst: inst.id, mfa: true }) };
 }
 async function applicant() {
   const i = ++n;
-  const u = await prisma.user.create({ data: { email: `ap${i}@x.mw`, passwordHash: "x", role: "STUDENT", fullName: "A", student: { create: { fullName: "A", dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
+  const u = await prisma.user.create({ data: { email: `ap${i}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "STUDENT", fullName: "A", student: { create: { fullName: "A", dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
   return { token: signAccess({ sub: u.id, role: "STUDENT" }), studentId: u.student!.id, userId: u.id };
 }
 
@@ -102,7 +102,7 @@ test("study mode and campus must be ones the institution offers", { skip }, asyn
 test("schools: institution declares highest class; class levels only up to it; Cambridge needed above Form 4", { skip }, async () => {
   const i = ++n;
   const inst = await prisma.institution.create({ data: { name: `Sec ${i}`, type: "SECONDARY_SCHOOL", contactEmail: `s${i}@x.mw`, status: "VERIFIED" } });
-  const adm = await prisma.user.create({ data: { email: `sa${i}@x.mw`, passwordHash: "x", role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
+  const adm = await prisma.user.create({ data: { email: `sa${i}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
   const t = signAccess({ sub: adm.id, role: "INSTITUTION_ADMIN", inst: inst.id, mfa: true });
   const prog = (classLevel: string, syllabus?: string) => call("POST", "/institution/programs", t, { title: "xx", level: "xx", seats: 40, applicationFee: 500_000, tuitionFeeMinor: 9_000_000, tuitionPeriod: "TERM", classLevel, syllabus });
   assert.equal((await prog("F1", "MSCE")).status, 422);                       // must declare highest level first

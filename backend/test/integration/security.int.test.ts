@@ -24,7 +24,7 @@ const PW = "a-long-password-1";
 // A school admin who has completed two-step setup. Returns what the browser would hold.
 async function adminWithMfa() {
   const i = ++n, email = `staff${i}@school.mw`;
-  const s = await json(await call("POST", "/auth/signup", undefined, { email, password: PW, fullName: "Staff", role: "INSTITUTION_ADMIN", consent: true, institution: { name: `School ${i}`, type: "COLLEGE", contactEmail: `s${i}@x.mw` } }));
+  const s = await json(await call("POST", "/auth/signup", undefined, { email, phone: `088${String(1000000 + i)}`, password: PW, fullName: "Staff", role: "INSTITUTION_ADMIN", consent: true, institution: { name: `School ${i}`, type: "COLLEGE", contactEmail: `s${i}@x.mw` } }));
   const setup = await json(await call("POST", "/auth/mfa/setup", s.accessToken));
   const en = await json(await call("POST", "/auth/mfa/enable", s.accessToken, { code: currentCode(setup.secret) }));
   return { email, secret: setup.secret, access: en.accessToken as string, refresh: en.refreshToken as string, codes: en.recoveryCodes as string[], id: (await prisma.user.findUniqueOrThrow({ where: { email } })).id };

@@ -38,9 +38,9 @@ async function newApplication(feeMinor = 1_000_000) {
   const n = ++counter;
   const inst = await prisma.institution.create({ data: { name: `Uni ${n}`, type: "UNIVERSITY", contactEmail: `u${n}@x.mw`, status: "VERIFIED" } });
   const prog = await prisma.program.create({ data: { institutionId: inst.id, title: "BSc", level: "UG", seats: 10, applicationFee: feeMinor, status: "ACTIVE" } });
-  const user = await prisma.user.create({ data: { email: `s${n}@x.mw`, passwordHash: "x", role: "STUDENT", fullName: "S", student: { create: { fullName: "S", dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
+  const user = await prisma.user.create({ data: { email: `s${n}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "STUDENT", fullName: "S", student: { create: { fullName: "S", dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
   const token = signAccess({ sub: user.id, role: "STUDENT" });
-  const admin = await prisma.user.create({ data: { email: `a${n}@x.mw`, passwordHash: "x", role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
+  const admin = await prisma.user.create({ data: { email: `a${n}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
   const a = await submitApplication((m, p, t, b) => fetch(`${base}/v1${p}`, { method: m, headers: { "Content-Type": "application/json", ...(t && { Authorization: `Bearer ${t}` }) }, body: b === undefined ? undefined : JSON.stringify(b) }), token, user.student!.id, [prog.id]);
   return { ...a, token, adminId: admin.id, studentUserId: user.id };
 }

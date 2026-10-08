@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { authenticate, requireRole } from "../middleware/auth.js";
+import { authenticate, requireRole, requireVerifiedPhone } from "../middleware/auth.js";
 import { body, h } from "../middleware/validate.js";
 import { presignDownload, presignUpload } from "../lib/storage.js";
 import { canActForStudent } from "../lib/access.js";
@@ -36,7 +36,7 @@ family.get("/children", requireRole("PARENT"), h(async (req, res) => {
 
 // ---- Credentials (student, or parent on behalf of a child)
 const fileMeta = z.object({ mime: z.string(), size: z.number().int().positive() });
-family.post("/students/:sid/credentials/upload-url", body(fileMeta), h(async (req, res) => {
+family.post("/students/:sid/credentials/upload-url", requireVerifiedPhone, body(fileMeta), h(async (req, res) => {
   if (!(await canActForStudent(req.user!, req.params.sid!))) return res.status(404).json({ error: "not_found" });
   res.json(await presignUpload(`students/${req.params.sid}/creds`, req.body.mime, req.body.size));
 }));
@@ -81,7 +81,7 @@ const myDraft = async (req: any, id: string) => {
   return a;
 };
 
-family.post("/applications/draft", body(z.object({ studentId: z.string().uuid(), programId: z.string().uuid(), clientId: z.string().uuid().optional() })), h(async (req, res) => {
+family.post("/applications/draft", requireVerifiedPhone, body(z.object({ studentId: z.string().uuid(), programId: z.string().uuid(), clientId: z.string().uuid().optional() })), h(async (req, res) => {
   const student = await canActForStudent(req.user!, req.body.studentId);
   if (!student) return res.status(404).json({ error: "not_found" });
   const program = await prisma.program.findUnique({ where: { id: req.body.programId }, include: { institution: true } });
@@ -167,7 +167,7 @@ family.put("/applications/:id/documents", body(z.object({ credentialIds: z.array
   res.json({ ok: true });
 }));
 
-family.post("/applications/:id/submit", h(async (req, res) => {
+family.post("/applications/:id/submit", requireVerifiedPhone, h(async (req, res) => {
   const a = await myDraft(req, req.params.id!);
   if (!a || a.status !== "DRAFT") return res.status(a ? 409 : 404).json({ error: a ? "not_editable" : "not_found" });
   const inst = a.institution, form = a.form as Record<string, any>;
@@ -205,7 +205,7 @@ family.post("/applications/:id/submit", h(async (req, res) => {
   res.json(done);
 }));
 
-family.post("/applications/:id/payment", body(z.object({
+family.post("/applications/:id/payment", requireVerifiedPhone, body(z.object({
   provider: z.enum(["AIRTEL_MONEY", "MPAMBA"]), reference: z.string().trim().min(6).max(30).regex(REFERENCE_RE), payerPhone: z.string(),
 })), h(async (req, res) => {
   const app = await prisma.application.findUnique({ where: { id: req.params.id } });

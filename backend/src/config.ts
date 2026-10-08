@@ -20,6 +20,10 @@ const schema = z.object({
   // Outgoing email over plain SMTP (any provider, or a mail server on this machine). Without it, email is only logged.
   SMTP_HOST: z.string().optional(), SMTP_PORT: z.coerce.number().default(587), SMTP_SECURE: z.enum(["true", "false"]).default("false"),
   SMTP_USER: z.string().optional(), SMTP_PASS: z.string().optional(), SMTP_FROM: z.string().default("Enrolla <no-reply@localhost>"),
+  // Africa's Talking SMS (fallback when WhatsApp is unavailable). Without AT_API_KEY no SMS is sent.
+  AT_USERNAME: z.string().optional(), AT_API_KEY: z.string().optional(), AT_SENDER_ID: z.string().optional(),
+  AT_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  AT_BASE_URL: z.string().optional(), // override (tests / proxies)
   RATE_LIMIT_PER_MIN: z.coerce.number().default(300),
   ACADEMIC_YEAR: z.string().default("2026/2027"),
   WA_DATA_DIR: z.string().default("./.wa-sessions"),
@@ -37,5 +41,6 @@ if (config.NODE_ENV === "production") {
   if (!process.env.WEB_URL) problems.push("WEB_URL must be set to the address of the website (used in password-reset emails)");
   if (config.STORAGE_DRIVER === "local" && !config.LOCAL_STORAGE_DIR.startsWith("/")) problems.push("LOCAL_STORAGE_DIR must be an absolute path (e.g. /var/lib/enrolla/files)");
   if (problems.length) throw new Error("Production configuration problems:\n - " + problems.join("\n - "));
+  if (!config.AT_API_KEY) console.warn("WARNING: AT_API_KEY is not set - verification codes can only go out over the platform WhatsApp number.");
   if (!config.SMTP_HOST) console.warn("WARNING: SMTP_HOST is not set - emails (password resets, letters) will only be written to the log.");
 }

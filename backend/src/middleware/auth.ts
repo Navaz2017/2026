@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import type { Role } from "@prisma/client";
 import { config } from "../config.js";
+import { prisma } from "../db.js";
 
 export interface AuthUser {
   sub: string;
@@ -39,3 +40,11 @@ export const signAccess = (u: AuthUser) =>
 // SYSTEM_OWNER may do nothing privileged without MFA; institution admins need it for children's documents and decisions.
 export const requireMfa = (req: Request, res: Response, next: NextFunction) =>
   req.user?.mfa ? next() : res.status(403).json({ error: "mfa_required" });
+
+// Actions that create records about a child or move money need a verified phone (stops throw-away accounts).
+export const requireVerifiedPhone = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const u = await prisma.user.findUnique({ where: { id: req.user!.sub }, select: { phone: true, phoneVerifiedAt: true } });
+    return u && (!u.phone || u.phoneVerifiedAt) ? next() : res.status(403).json({ error: "phone_not_verified" });
+  } catch (e) { next(e); }
+};

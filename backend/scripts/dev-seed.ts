@@ -23,6 +23,7 @@ function png(w: number, h: number, px: (x: number, y: number) => [number, number
 if (config.NODE_ENV === "production") throw new Error("dev-seed must not run in production");
 export const DEV_MFA_SECRET = "JBSWY3DPEHPK3PXP";
 const passwordHash = await hash("Passw0rd-demo1", { memoryCost: 19456, timeCost: 2, parallelism: 1 });
+const verified = { phoneVerifiedAt: new Date() };
 const mfa = { mfaEnabled: true, mfaSecret: encrypt(DEV_MFA_SECRET) };
 
 const owner = await prisma.user.upsert({ where: { email: "owner@enrolla.test" }, update: {}, create: { email: "owner@enrolla.test", fullName: "Demo Owner", role: "SYSTEM_OWNER", passwordHash, ...mfa } });
@@ -32,7 +33,7 @@ await prisma.setting.upsert({ where: { key: "pay.MPAMBA" }, update: {}, create: 
 
 const inst = (await prisma.institution.findFirst({ where: { name: "Zomba Demo University" } })) ??
   (await prisma.institution.create({ data: { name: "Zomba Demo University", type: "UNIVERSITY", district: "Zomba", contactEmail: "admissions@zdu.test", status: "VERIFIED", verifiedAt: new Date() } }));
-await prisma.user.upsert({ where: { email: "school@enrolla.test" }, update: {}, create: { email: "school@enrolla.test", fullName: "Demo Registrar", role: "INSTITUTION_ADMIN", institutionId: inst.id, passwordHash, ...mfa } });
+await prisma.user.upsert({ where: { email: "school@enrolla.test" }, update: {}, create: { email: "school@enrolla.test", phone: "+265888000333", fullName: "Demo Registrar", role: "INSTITUTION_ADMIN", ...verified, institutionId: inst.id, passwordHash, ...mfa } });
 const prog = (await prisma.program.findFirst({ where: { institutionId: inst.id, title: "BSc Computer Science" } })) ??
   (await prisma.program.create({ data: { institutionId: inst.id, title: "BSc Computer Science", level: "Undergraduate", code: "BSCS", seats: 30, applicationFee: 1_000_000, tuitionFeeMinor: 80_000_000, tuitionPeriod: "SEMESTER", duration: "4 years", modes: ["FULL_TIME", "WEEKEND"], entryRequirements: "Six MSCE credits including English and Mathematics", status: "ACTIVE" } }));
 
@@ -56,7 +57,7 @@ for (const l of ["STD1", "STD4", "STD8"]) {
     await prisma.program.create({ data: { institutionId: primary.id, title: `Standard ${l.slice(3)}`, level: `Standard ${l.slice(3)}`, classLevel: l, seats: 60, applicationFee: 300_000, tuitionFeeMinor: 4_500_000, tuitionPeriod: "TERM", status: "ACTIVE" } });
 }
 
-const sUser = await prisma.user.upsert({ where: { email: "student@enrolla.test" }, update: {}, create: { email: "student@enrolla.test", fullName: "Chikondi Banda", role: "STUDENT", language: "ny", passwordHash, phone: "+265999123456", student: { create: { fullName: "Chikondi Banda", dateOfBirth: new Date("2006-03-04") } } }, include: { student: true } });
+const sUser = await prisma.user.upsert({ where: { email: "student@enrolla.test" }, update: {}, create: { email: "student@enrolla.test", fullName: "Chikondi Banda", role: "STUDENT", language: "ny", passwordHash, phone: "+265999123456", ...verified, student: { create: { fullName: "Chikondi Banda", dateOfBirth: new Date("2006-03-04") } } }, include: { student: true } });
 const student = sUser.student ?? (await prisma.student.findFirstOrThrow({ where: { userId: sUser.id } }));
 let cred = await prisma.credential.findFirst({ where: { studentId: student.id } });
 const DEMO_FORM = {

@@ -69,8 +69,9 @@ enum SettlementStatus {
 
 model User {
   id           String    @id @default(uuid())
-  email        String    @unique
+  email        String?   @unique // optional for parents/students (they sign in with their phone); required for school admins and the owner
   phone        String?   @unique
+  phoneVerifiedAt DateTime? // set once the SMS/WhatsApp code was entered
   passwordHash String
   role         Role
   fullName     String
@@ -91,6 +92,7 @@ model User {
   refreshTokens RefreshToken[]
   resets        PasswordReset[]
   recoveryCodes MfaRecoveryCode[]
+  otps          OtpCode[]
 
   @@index([role])
 }
@@ -130,6 +132,56 @@ model WhatsAppSession {
   phone         String? // linked number once connected
   lastError     String?
   updatedAt     DateTime    @updatedAt
+}
+
+// One-time phone codes (signup verification, password reset). Only an HMAC of the code is stored.
+model OtpCode {
+  id        String    @id @default(uuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone     String
+  purpose   String // SIGNUP | RESET
+  codeHash  String
+  channel   String? // whatsapp | sms | dev
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phone, purpose, createdAt])
+}
+
+// The platform's own WhatsApp number (sends verification codes). Managed from the owner's Messaging page.
+model PlatformWhatsApp {
+  id        String   @id @default("platform")
+  desired   Boolean  @default(false)
+  status    String   @default("DISCONNECTED") // DISCONNECTED | STARTING | QR | CONNECTED | FAILED
+  qr        String?
+  phone     String?
+  lastError String?
+  updatedAt DateTime @updatedAt
+}
+
+// Messages waiting to go out through a whatsapp-web.js session. sessionKey = "platform" or an institution id.
+// The wa-worker process polls this table; the API only inserts rows (no Redis needed).
+model WaOutbox {
+  id             String    @id @default(uuid())
+  sessionKey     String
+  toPhone        String
+  text           String
+  attachmentKey  String?
+  attachmentName String?
+  letterId       String?
+  status         String    @default("PENDING") // PENDING | SENDING | SENT | FAILED | CANCELLED
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(4)
+  nextAttemptAt  DateTime  @default(now())
+  lastError      String?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
 }
 
 model RefreshToken {

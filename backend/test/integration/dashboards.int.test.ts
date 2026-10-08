@@ -30,7 +30,7 @@ async function world(opts: { seats?: number; verified?: boolean } = {}) {
   const i = ++n;
   const inst = await prisma.institution.create({ data: { name: `=Uni ${i}`, type: "UNIVERSITY", contactEmail: `u${i}@x.mw`, status: opts.verified === false ? "PENDING" : "VERIFIED", payoutProvider: "AIRTEL_MONEY", payoutPhone: "+265999000111" } });
   const prog = await prisma.program.create({ data: { institutionId: inst.id, title: "BSc", level: "UG", seats: opts.seats ?? 5, applicationFee: 1_000_000, status: "ACTIVE" } });
-  const admin = await prisma.user.create({ data: { email: `adm${i}@x.mw`, passwordHash: "x", role: "INSTITUTION_ADMIN", fullName: "Adm", institutionId: inst.id } });
+  const admin = await prisma.user.create({ data: { email: `adm${i}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "INSTITUTION_ADMIN", fullName: "Adm", institutionId: inst.id } });
   const adminToken = signAccess({ sub: admin.id, role: "INSTITUTION_ADMIN", inst: inst.id, mfa: true });
   const adminNoMfa = signAccess({ sub: admin.id, role: "INSTITUTION_ADMIN", inst: inst.id });
   return { inst, prog, admin, adminToken, adminNoMfa };
@@ -38,7 +38,7 @@ async function world(opts: { seats?: number; verified?: boolean } = {}) {
 
 async function paidApplication(w: Awaited<ReturnType<typeof world>>, withCredential = false) {
   const i = ++n;
-  const u = await prisma.user.create({ data: { email: `st${i}@x.mw`, passwordHash: "x", role: "STUDENT", fullName: `Student ${i}`, phone: `+26599${String(i).padStart(7, "0")}`, student: { create: { fullName: `Student ${i}`, dateOfBirth: new Date("2006-02-02") } } }, include: { student: true } });
+  const u = await prisma.user.create({ data: { email: `st${i}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "STUDENT", fullName: `Student ${i}`, phone: `+26599${String(i).padStart(7, "0")}`, student: { create: { fullName: `Student ${i}`, dateOfBirth: new Date("2006-02-02") } } }, include: { student: true } });
   const token = signAccess({ sub: u.id, role: "STUDENT" });
   let credentialId: string | undefined;
   if (withCredential) {
@@ -57,7 +57,7 @@ async function paidApplication(w: Awaited<ReturnType<typeof world>>, withCredent
 }
 
 test("signup needs consent; MFA setup/enable/login flow; institution admin blocked from sensitive actions until MFA", { skip }, async () => {
-  const body = { email: "head@school.mw", password: "very-long-password", fullName: "Head Teacher", role: "INSTITUTION_ADMIN", language: "ny", institution: { name: "Zomba Sec", type: "SECONDARY_SCHOOL", contactEmail: "z@s.mw" } };
+  const body = { email: "head@school.mw", phone: "0999000001", password: "very-long-password", fullName: "Head Teacher", role: "INSTITUTION_ADMIN", language: "ny", institution: { name: "Zomba Sec", type: "SECONDARY_SCHOOL", contactEmail: "z@s.mw" } };
   assert.equal((await call("POST", "/auth/signup", undefined, body)).status, 400); // no consent
   const ok = await call("POST", "/auth/signup", undefined, { ...body, consent: true });
   assert.equal(ok.status, 201);
@@ -204,7 +204,7 @@ test("owner: review verifies institution + activates early programs; timeseries;
 });
 
 test("password reset: single use, signs out all sessions, no account enumeration", { skip }, async () => {
-  await call("POST", "/auth/signup", undefined, { email: "mum@x.mw", password: "old-password-123", fullName: "Mum", role: "PARENT", occupation: "Farmer", consent: true, language: "tum" });
+  await call("POST", "/auth/signup", undefined, { email: "mum@x.mw", phone: "0999000002", password: "old-password-123", fullName: "Mum", role: "PARENT", occupation: "Farmer", consent: true, language: "tum" });
   assert.equal((await call("POST", "/auth/forgot", undefined, { email: "nobody@x.mw" })).status, 202);
   assert.equal(outbox.filter((m) => m.to === "nobody@x.mw").length, 0);
   assert.equal((await call("POST", "/auth/forgot", undefined, { email: "mum@x.mw" })).status, 202);

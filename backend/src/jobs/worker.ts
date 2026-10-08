@@ -1,7 +1,7 @@
 // Run as a separate process: `node dist/src/jobs/worker.js`. Scales independently of the API.
 import { Worker } from "bullmq";
 import { prisma } from "../db.js";
-import { enqueueLetter, waQueue, workerRedis } from "./queue.js";
+import { enqueueLetter, workerRedis } from "./queue.js";
 import { DEFAULT_TEMPLATES_BY_LANG, isLang, renderLetter } from "../lib/letters.js";
 import { letterPdf } from "../lib/letterPdf.js";
 import { putObject } from "../lib/storage.js";
@@ -31,11 +31,12 @@ new Worker<{ applicationId: string }>(
     const letter = await prisma.letter.upsert({ where: { applicationId: app.id }, create: { applicationId: app.id, storageKey: key, deliveredVia: [] }, update: { storageKey: key } });
 
     for (const u of recipients) {
-      await sendEmail(u.email, `${inst.name}: ${app.program.title}`, text).then(() => via.includes("email") || via.push("email")).catch((e) => console.error("email failed", e.message));
+      if (u.email) await sendEmail(u.email, `${inst.name}: ${app.program.title}`, text).then(() => via.includes("email") || via.push("email")).catch((e) => console.error("email failed", e.message));
       // WhatsApp only when the institution has linked its own number; the wa-worker records success on the Letter.
       if (u.phone && inst.whatsapp?.status === "CONNECTED") {
-        await waQueue.add("send", { institutionId: inst.id, to: u.phone, text, letterId: letter.id, attachment: { key, filename: "Decision-letter.pdf" } },
-          { attempts: 4, backoff: { type: "exponential", delay: 30_000 } });
+        // The wa-worker picks this up from the database (retries with back-off, records delivery on the Letter).
+        const queued = await prisma.waOutbox.findFirst({ where: { sessionKey: inst.id, letterId: letter.id, toPhone: u.phone }, select: { id: true } });
+        if (!queued) await prisma.waOutbox.create({ data: { sessionKey: inst.id, toPhone: u.phone, text, letterId: letter.id, attachmentKey: key, attachmentName: "Decision-letter.pdf" } });
       }
     }
     await prisma.letter.update({ where: { id: letter.id }, data: { deliveredVia: { set: [...new Set([...letter.deliveredVia, ...via])] } } });

@@ -1,26 +1,30 @@
 // Run as ONE separate process: `node dist/src/jobs/wa-worker.js`.
-// Owns every live whatsapp-web.js client (one headless Chromium per linked institution).
+// Owns every live whatsapp-web.js client: the platform's own number ("platform", sends verification codes) and
+// one per linked institution (sends decision letters). Each is a headless Chromium.
 //
 // !! whatsapp-web.js is an UNOFFICIAL client. Using it can breach WhatsApp's Terms of Service and the linked
-// number can be banned. Mitigations here: only low-volume transactional messages to people who applied,
-// randomised delay between sends, rate limit. Email + in-app notification always remain as fallback.
-// The sender is isolated behind WaJob so it can be swapped for the official WhatsApp Business Cloud API.
+// number can be banned. Mitigations here: only low-volume transactional messages to people who signed up or
+// applied, randomised delay on institution sends, rate limit. SMS (Africa's Talking), email and in-app
+// notifications always remain as fallback. The sender is isolated behind WaOutbox so it can be swapped for the
+// official WhatsApp Business Cloud API.
+// Work arrives through the database (WaOutbox rows) - no Redis needed.
 import { createRequire } from "node:module";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Worker, UnrecoverableError } from "bullmq";
 import { prisma } from "../db.js";
 import { config } from "../config.js";
 import { getObject } from "../lib/storage.js";
-import { workerRedis, type WaJob } from "./queue.js";
 
 const require = createRequire(import.meta.url);
 const wa = require("whatsapp-web.js") as typeof import("whatsapp-web.js");
 
+const PLATFORM = "platform";
 const clients = new Map<string, import("whatsapp-web.js").Client>();
 const starting = new Set<string>();
-const setState = (institutionId: string, data: Record<string, unknown>) =>
-  prisma.whatsAppSession.update({ where: { institutionId }, data }).catch(() => {});
+const setState = (key: string, data: Record<string, unknown>) =>
+  (key === PLATFORM
+    ? prisma.platformWhatsApp.upsert({ where: { id: PLATFORM }, update: data, create: { id: PLATFORM, ...data } })
+    : prisma.whatsAppSession.update({ where: { institutionId: key }, data })).catch(() => {});
 
 async function start(id: string) {
   if (clients.has(id) || starting.has(id)) return;
@@ -43,38 +47,68 @@ async function teardown(id: string, logout: boolean) {
   const c = clients.get(id);
   clients.delete(id);
   if (!c) return;
-  if (logout) await c.logout().catch(() => {}); // unlinks the device from the institution's phone
+  if (logout) await c.logout().catch(() => {}); // unlinks the device from the phone
   await c.destroy().catch(() => {});
   if (logout) await fs.rm(path.join(config.WA_DATA_DIR, `session-${id}`), { recursive: true, force: true }).catch(() => {});
 }
 
 // Reconcile DB intent with reality every 5 s (also restores sessions after a restart).
 async function reconcile() {
-  const rows = await prisma.whatsAppSession.findMany();
+  const rows = [
+    ...(await prisma.platformWhatsApp.findMany()).map((r) => ({ key: PLATFORM, desired: r.desired })),
+    ...(await prisma.whatsAppSession.findMany()).map((r) => ({ key: r.institutionId, desired: r.desired })),
+  ];
   for (const r of rows) {
-    if (r.desired && !clients.has(r.institutionId)) { void start(r.institutionId); await new Promise((res) => setTimeout(res, 3000)); } // stagger Chromium launches
-    if (!r.desired && clients.has(r.institutionId)) { await teardown(r.institutionId, true); await setState(r.institutionId, { status: "DISCONNECTED", qr: null, phone: null }); }
+    if (r.desired && !clients.has(r.key)) { void start(r.key); await new Promise((res) => setTimeout(res, 3000)); } // stagger Chromium launches
+    if (!r.desired && clients.has(r.key)) { await teardown(r.key, true); await setState(r.key, { status: "DISCONNECTED", qr: null, phone: null }); }
   }
 }
 setInterval(() => reconcile().catch((e) => console.error("reconcile", e)), 5000);
 
-new Worker<WaJob>("wa-send", async ({ data }) => {
-  const c = clients.get(data.institutionId);
-  const s = await prisma.whatsAppSession.findUnique({ where: { institutionId: data.institutionId } });
-  if (!c || s?.status !== "CONNECTED") throw new Error("whatsapp not connected"); // retried with back-off
-  const digits = data.to.replace(/\D/g, "");
-  const id = await c.getNumberId(digits);
-  if (!id) throw new UnrecoverableError("number is not on WhatsApp"); // no point retrying; email fallback already sent
-  await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2500)); // human-like pacing
-  await c.sendMessage(id._serialized, data.text);
-  if (data.attachment) {
-    const buf = await getObject(data.attachment.key);
-    await c.sendMessage(id._serialized, new wa.MessageMedia("application/pdf", buf.toString("base64"), data.attachment.filename));
+// ---- outbox
+const NOT_ON_WA = "not_on_whatsapp";
+async function deliver(m: { id: string; sessionKey: string; toPhone: string; text: string; attachmentKey: string | null; attachmentName: string | null; letterId: string | null }) {
+  const c = clients.get(m.sessionKey);
+  if (!c) throw new Error("whatsapp not connected");
+  const id = await c.getNumberId(m.toPhone.replace(/\D/g, ""));
+  if (!id) throw new Error(NOT_ON_WA);
+  if (m.sessionKey !== PLATFORM) await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2500)); // human-like pacing for letters
+  await c.sendMessage(id._serialized, m.text);
+  if (m.attachmentKey) {
+    const buf = await getObject(m.attachmentKey);
+    await c.sendMessage(id._serialized, new wa.MessageMedia("application/pdf", buf.toString("base64"), m.attachmentName ?? "document.pdf"));
   }
-  if (data.letterId) {
-    const l = await prisma.letter.findUnique({ where: { id: data.letterId } });
+  if (m.letterId) {
+    const l = await prisma.letter.findUnique({ where: { id: m.letterId } });
     if (l && !l.deliveredVia.includes("whatsapp")) await prisma.letter.update({ where: { id: l.id }, data: { deliveredVia: { push: "whatsapp" } } });
   }
-}, { connection: workerRedis(), concurrency: 2, limiter: { max: 20, duration: 60_000 } });
+}
+
+let busy = false;
+async function pump() {
+  if (busy) return;
+  busy = true;
+  try {
+    // A crash mid-send leaves SENDING rows behind: release them after 2 minutes.
+    await prisma.waOutbox.updateMany({ where: { status: "SENDING", updatedAt: { lt: new Date(Date.now() - 120_000) } }, data: { status: "PENDING" } });
+    const due = await prisma.waOutbox.findMany({ where: { status: "PENDING", nextAttemptAt: { lte: new Date() } }, orderBy: { createdAt: "asc" }, take: 10 });
+    for (const m of due) {
+      const claimed = await prisma.waOutbox.updateMany({ where: { id: m.id, status: "PENDING" }, data: { status: "SENDING" } });
+      if (claimed.count !== 1) continue;
+      try {
+        await deliver(m);
+        await prisma.waOutbox.update({ where: { id: m.id }, data: { status: "SENT", sentAt: new Date(), attempts: { increment: 1 }, lastError: null } });
+      } catch (e) {
+        const msg = (e as Error).message.slice(0, 200);
+        const attempts = m.attempts + 1;
+        const final = msg === NOT_ON_WA || attempts >= m.maxAttempts;
+        await prisma.waOutbox.update({ where: { id: m.id }, data: { attempts, lastError: msg, status: final ? "FAILED" : "PENDING", nextAttemptAt: new Date(Date.now() + 30_000 * 2 ** (attempts - 1)) } });
+      }
+    }
+    // Housekeeping: keep the table small.
+    await prisma.waOutbox.deleteMany({ where: { status: { in: ["SENT", "FAILED", "CANCELLED"] }, updatedAt: { lt: new Date(Date.now() - 7 * 864e5) } } });
+  } finally { busy = false; }
+}
+setInterval(() => pump().catch((e) => console.error("outbox", e)), 1000);
 
 process.on("SIGTERM", async () => { await Promise.all([...clients.keys()].map((id) => teardown(id, false))); process.exit(0); });

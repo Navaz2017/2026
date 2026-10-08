@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { authenticate, requireMfa, requireRole } from "../middleware/auth.js";
+import { authenticate, requireMfa, requireRole, requireVerifiedPhone } from "../middleware/auth.js";
 import { body, h } from "../middleware/validate.js";
 import { presignDownload, presignUpload } from "../lib/storage.js";
 import { normalisePhone } from "../lib/phone.js";
@@ -50,7 +50,7 @@ institutions.get("/preview", h(async (req, res) => {
 
 // Step 1: ask for an upload slot. Step 2: client PUTs the file to S3. Step 3: client confirms (below).
 const fileMeta = z.object({ mime: z.string(), size: z.number().int().positive(), kind: z.string().max(40) });
-institutions.post("/me/documents/upload-url", body(fileMeta), h(async (req, res) => {
+institutions.post("/me/documents/upload-url", requireVerifiedPhone, body(fileMeta), h(async (req, res) => {
   res.json(await presignUpload(`inst/${inst(req)}/docs`, req.body.mime, req.body.size));
 }));
 
