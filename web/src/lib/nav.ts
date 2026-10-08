@@ -8,7 +8,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { href: "/app/owner", key: "nav.dashboard", icon: "dashboard" }, { href: "/app/owner/institutions", key: "nav.verification", icon: "verified" },
     { href: "/app/owner/payments", key: "nav.payments", icon: "payments" }, { href: "/app/owner/devices", key: "nav.devices", icon: "phone" },
     { href: "/app/owner/settlements", key: "nav.settlements", icon: "bank" }, { href: "/app/owner/revenue", key: "nav.revenue", icon: "scale" },
-    { href: "/app/owner/users", key: "nav.users", icon: "users" }, { href: "/app/owner/audit", key: "nav.audit", icon: "log" },
+    { href: "/app/owner/users", key: "nav.users", icon: "users" }, { href: "/app/owner/messaging", key: "nav.messaging", icon: "chat" }, { href: "/app/owner/audit", key: "nav.audit", icon: "log" },
     { href: "/app/security", key: "nav.security", icon: "lock" },
   ],
   INSTITUTION_ADMIN: [

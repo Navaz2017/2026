@@ -13,21 +13,21 @@ export default function Login() {
   const router = useRouter();
   const [needCode, setNeedCode] = useState(false);
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
-  useEffect(() => { if (user) router.replace(homeFor(user.role)); }, [user, router]);
+  useEffect(() => { if (user) router.replace(user.phoneVerified ? homeFor(user.role) : "/app/verify"); }, [user, router]);
 
   return (
     <AuthLayout>
       <form className="card" onSubmit={async (e) => {
         e.preventDefault(); setErr(""); setBusy(true);
         const f = new FormData(e.currentTarget);
-        try { await signIn("login", { email: f.get("email"), password: f.get("password"), ...(f.get("code") && { code: f.get("code") }) }); }
+        try { await signIn("login", { identifier: f.get("identifier"), password: f.get("password"), ...(f.get("code") && { code: f.get("code") }) }); }
         catch (x: any) {
           if (x.code === "mfa_required") { setNeedCode(true); setErr(t("auth.mfaNeeded")); }
           else setErr(t(`err.${x.code}`) === `err.${x.code}` ? t("err.internal") : t(`err.${x.code}`));
         } finally { setBusy(false); }
       }}>
         <h1>{t("auth.signIn")}</h1>
-        <Field label={t("common.email")}><input name="email" type="email" required autoComplete="username" inputMode="email" /></Field>
+        <Field label={t("auth.identifier")}><input name="identifier" required autoComplete="username" autoCapitalize="none" /></Field>
         <Field label={t("common.password")}><input name="password" type="password" required autoComplete="current-password" /></Field>
         {needCode && <><Field label={t("auth.mfaCodeOrRecovery")}><input name="code" maxLength={9} autoComplete="one-time-code" autoCapitalize="none" required autoFocus /></Field><p className="muted" style={{ marginTop: "-.4rem" }}>{t("auth.lostPhone")}</p></>}
         <Msg kind="err">{err}</Msg>

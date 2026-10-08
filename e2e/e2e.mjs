@@ -13,15 +13,15 @@ const check = (name, ok, extra = "") => { results.push([ok, name, extra]); conso
 async function fresh() {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const page = await ctx.newPage(); globalThis.__page = page;
-  page.on("response", (r) => { if (r.status() >= 400 && r.status() !== 401) errors.push("HTTP " + r.status() + " " + r.request().method() + " " + r.url()); });
-  page.on("response", (r) => { if (r.status() >= 400 && r.status() !== 401) errors.push("HTTP " + r.status() + " " + r.request().method() + " " + r.url()); });
+  page.on("response", (r) => { if (r.status() >= 400 && r.status() !== 401 && !/auth\/phone\/verify/.test(r.url())) errors.push("HTTP " + r.status() + " " + r.request().method() + " " + r.url()); });
+  page.on("response", (r) => { if (r.status() >= 400 && r.status() !== 401 && !/auth\/phone\/verify/.test(r.url())) errors.push("HTTP " + r.status() + " " + r.request().method() + " " + r.url()); });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/401|favicon|net::ERR/.test(m.text())) errors.push("console: " + m.text()); });
+  page.on("console", (m) => { if (m.type() === "error" && !/401|favicon|net::ERR/.test(m.text()) && !/auth\/phone\/verify/.test(m.location().url ?? "")) errors.push("console: " + m.text()); });
   return { ctx, page };
 }
 async function login(page, email, withCode = false) {
   await page.goto(BASE + "/login");
-  await page.fill('input[name=email]', email); await page.fill('input[name=password]', "Passw0rd-demo1");
+  await page.fill('input[name=identifier]', email); await page.fill('input[name=password]', "Passw0rd-demo1");
   await page.click('form button.btn.primary');
   if (withCode) { await page.waitForSelector('input[name=code]'); await page.fill('input[name=code]', code()); await page.click('form button.btn.primary'); }
   await page.waitForURL(/\/app\//, { timeout: 15000 });
@@ -73,10 +73,21 @@ try {
 
   // 2. parent signs up in Chichewa -> whole app in Chichewa
   await page.goto(BASE + "/signup");
-  await page.fill('input[name=fullName]', "Mayi Phiri"); await page.fill('input[name=email]', "mayi@example.mw");
+  await page.fill('input[name=fullName]', "Mayi Phiri"); await page.fill('input[name=phone]', "0999 555 001"); // phone only: email is optional for parents
   await page.fill('input[name=occupation]', "Mlimi"); await page.fill('input[name=password]', "very-long-password-1");
   await page.check('input[name=consent]');
   await page.click('form button.btn.primary');
+  // phone verification: dev mode shows the code on screen (no WhatsApp/SMS configured here)
+  await page.waitForURL(/\/app\/verify/, { timeout: 15000 });
+  const devText = await page.locator(".msg, .alert, [class*=msg]").filter({ hasText: /\d{6}/ }).first().innerText();
+  const otp = devText.match(/\d{6}/)[0];
+  check("signup lands on the phone verification screen (Chichewa)", (await page.locator("h1").textContent()).includes("nambala"), await page.locator("h1").textContent());
+  await page.goto(BASE + "/app/family"); await page.waitForURL(/\/app\/verify/, { timeout: 15000 });
+  check("unverified user cannot reach the app", true);
+  await page.fill('input[autocomplete=one-time-code]', otp === "000000" ? "111111" : "000000"); await page.click('form button.btn.primary');
+  await page.waitForSelector(".msg.err, .err", { timeout: 10000 });
+  check("wrong code is refused", page.url().includes("/app/verify"));
+  await page.fill('input[autocomplete=one-time-code]', otp); await page.click('form button.btn.primary');
   await page.waitForURL(/\/app\/family/, { timeout: 15000 });
   const nav = (await page.locator("nav.side").innerText());
   check("parent nav is Chichewa", nav.includes("Ana anga") && nav.includes("Sakani sukulu") && nav.includes("Zopempha zanga"), nav.replace(/\n/g, " | "));
@@ -199,7 +210,7 @@ try {
   check("still signed in after reload with the NEW refresh cookie", (await page.locator("nav.side").innerText()).includes("Ana anga"));
   await ctx.close();
   { const { ctx: c2, page: p2 } = await fresh(); await p2.goto(BASE + "/login");
-    await p2.fill('input[name=email]', "mayi@example.mw"); await p2.fill('input[name=password]', "very-long-password-1"); await p2.click("form button.btn.primary");
+    await p2.fill('input[name=identifier]', "0999 555 001"); await p2.fill('input[name=password]', "very-long-password-1"); await p2.click("form button.btn.primary");
     check("old password no longer works", (await p2.locator(".msg.err").waitFor({ timeout: 8000 }).then(() => true).catch(() => false)));
     await p2.fill('input[name=password]', "another-long-password-2"); await p2.click("form button.btn.primary"); await p2.waitForURL(/\/app\//, { timeout: 15000 });
     check("new password works", true); await c2.close(); }
@@ -207,7 +218,7 @@ try {
   // 3. owner: MFA login, dashboard + all six screens
   ({ ctx, page } = await fresh());
   await page.goto(BASE + "/login"); await page.getByRole("button", { name: "Chichewa" }).click();
-  await page.fill('input[name=email]', "owner@enrolla.test"); await page.fill('input[name=password]', "Passw0rd-demo1");
+  await page.fill('input[name=identifier]', "owner@enrolla.test"); await page.fill('input[name=password]', "Passw0rd-demo1");
   await page.click('form button.btn.primary');
   await page.waitForSelector('input[name=code]');
   check("password-only login asks for security code (Chichewa)", (await page.locator("form").innerText()).includes("Lembani khodi"));
@@ -240,12 +251,12 @@ try {
   await ctx.close();
   { // lost phone: sign in with a recovery code instead of the authenticator
     const { ctx: c3, page: p3 } = await fresh(); await p3.goto(BASE + "/login");
-    await p3.fill('input[name=email]', "owner@enrolla.test"); await p3.fill('input[name=password]', "Passw0rd-demo1"); await p3.click("form button.btn.primary");
+    await p3.fill('input[name=identifier]', "owner@enrolla.test"); await p3.fill('input[name=password]', "Passw0rd-demo1"); await p3.click("form button.btn.primary");
     await p3.waitForSelector('input[name=code]'); await p3.fill('input[name=code]', codes[0]); await p3.click("form button.btn.primary");
     await p3.waitForURL(/\/app\/owner/, { timeout: 15000 });
     check("owner signs in with a recovery code (no authenticator)", true);
     await p3.getByRole("button", { name: "Sign out" }).click(); await p3.waitForURL(/\/login/);
-    await p3.fill('input[name=email]', "owner@enrolla.test"); await p3.fill('input[name=password]', "Passw0rd-demo1"); await p3.click("form button.btn.primary");
+    await p3.fill('input[name=identifier]', "owner@enrolla.test"); await p3.fill('input[name=password]', "Passw0rd-demo1"); await p3.click("form button.btn.primary");
     await p3.waitForSelector('input[name=code]'); await p3.fill('input[name=code]', codes[0]); await p3.click("form button.btn.primary");
     check("the same recovery code cannot be used twice", await p3.locator(".msg.err").waitFor({ timeout: 8000 }).then(() => true).catch(() => false));
     await c3.close(); }

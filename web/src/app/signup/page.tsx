@@ -14,17 +14,20 @@ export default function Signup() {
   const router = useRouter();
   const [role, setRole] = useState<R>("PARENT");
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
-  useEffect(() => { if (user) router.replace(homeFor(user.role)); }, [user, router]);
+  useEffect(() => { if (user) router.replace(user.phoneVerified ? homeFor(user.role) : "/app/verify"); }, [user, router]);
 
   return (
     <AuthLayout>
       <form className="card" onSubmit={async (e) => {
         e.preventDefault(); setErr(""); setBusy(true);
         const f = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
-        const body: any = { role, language: lang, consent: f.consent === "on", email: f.email, password: f.password, fullName: f.fullName, ...(f.phone && { phone: f.phone }) };
+        const body: any = { role, language: lang, consent: f.consent === "on", password: f.password, fullName: f.fullName, phone: f.phone, ...(f.email && { email: f.email }) };
         if (role === "PARENT") Object.assign(body, { occupation: f.occupation, employer: f.employer || undefined });
         if (role === "INSTITUTION_ADMIN") body.institution = { name: f.instName, type: f.instType, district: f.district || undefined, contactEmail: f.contactEmail };
-        try { await signIn("signup", body); }
+        try {
+          const r = await signIn("signup", body);
+          try { if (r?.verification?.devCode) sessionStorage.setItem("devCode", r.verification.devCode); sessionStorage.setItem("otpChannel", r?.verification?.channel ?? ""); } catch {}
+        }
         catch (x: any) { setErr(x.code === "validation" ? t("err.validation") : t(`err.${x.code}`) === `err.${x.code}` ? t("err.internal") : t(`err.${x.code}`)); }
         finally { setBusy(false); }
       }}>
@@ -35,8 +38,8 @@ export default function Signup() {
           </select>
         </Field>
         <Field label={t("auth.fullName")}><input name="fullName" required minLength={2} autoComplete="name" /></Field>
-        <Field label={t("common.email")}><input name="email" type="email" required autoComplete="email" /></Field>
-        <Field label={t("common.phone")}><input name="phone" type="tel" inputMode="tel" placeholder="0999 123 456" autoComplete="tel" /></Field>
+        <Field label={t("common.phone")} hint={t("auth.phoneHelp")}><input name="phone" type="tel" inputMode="tel" required placeholder="0999 123 456" autoComplete="tel" /></Field>
+        <Field label={role === "INSTITUTION_ADMIN" ? t("common.email") : t("auth.emailOptional")}><input name="email" type="email" required={role === "INSTITUTION_ADMIN"} autoComplete="email" /></Field>
         {role === "PARENT" && <>
           <Field label={t("auth.occupation")}><input name="occupation" required minLength={2} /></Field>
           <Field label={t("auth.employer")}><input name="employer" /></Field>

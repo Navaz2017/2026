@@ -27,6 +27,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (other) router.replace(homeFor(user.role));
   }, [user, path, router]);
 
+  // Unverified phone: the only reachable screen is the verification page.
+  useEffect(() => { if (user && !user.phoneVerified && path !== "/app/verify") router.replace("/app/verify"); }, [user, path, router]);
+
   useEffect(() => { // gentle polling, only while the tab is visible, jittered so many users never sync at once
     if (!user) return;
     let timer: ReturnType<typeof setTimeout>;
