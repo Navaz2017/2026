@@ -101,7 +101,7 @@ npm run dev                                            # API on http://localhost
 # new terminal
 cd web && npm install && npm run dev                   # web on http://localhost:3000
 ```
-Demo logins (password `Passw0rd-demo1`): `owner@enrolla.test`, `school@enrolla.test` (both ask for a 6-digit code: add secret `JBSWY3DPEHPK3PXP` to an authenticator app), `student@enrolla.test`. Parents/students/schools can also sign up at `/signup`.
+Demo logins (password `Passw0rd-demo1`): `owner@enrolla.test`, `school@enrolla.test` (both ask for a 6-digit code; **each has its own secret**: owner `JBSWY3DPEHPK3PXP`, school `GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ` — add them as two entries in your authenticator app. Real accounts always get a random secret of their own at setup), `student@enrolla.test`. Parents/students/schools can also sign up at `/signup`.
 Letters and WhatsApp need the extra processes `npm run dev:worker` / `npm run dev:wa` (Redis required; WhatsApp also needs Chromium).
 Tests: `cd backend && npm test && npm run test:int` · `node shared/i18n/sync.mjs` · `cd e2e && bash run.sh`.
 

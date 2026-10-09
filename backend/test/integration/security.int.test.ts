@@ -99,3 +99,16 @@ test("owner can reset a staff member's two-step security; staff then sign in wit
   assert.equal((await call("POST", "/auth/refresh", undefined, { refreshToken: a.refresh })).status, 401); // old sessions revoked
   assert.equal(await prisma.auditLog.count({ where: { action: "user.reset_mfa", entityId: a.id } }), 1);
 });
+
+test("every institution's authenticator is its own: different secrets, and one school's code never signs in another's admin", { skip }, async () => {
+  const a = await adminWithMfa(), b = await adminWithMfa();
+  assert.notEqual(a.secret, b.secret);
+  const stored = await prisma.user.findMany({ where: { id: { in: [a.id, b.id] } }, select: { mfaSecret: true } });
+  assert.notEqual(stored[0]!.mfaSecret, stored[1]!.mfaSecret);
+  assert.equal((await login(a.email, currentCode(a.secret))).status, 200);
+  assert.equal((await login(b.email, currentCode(b.secret))).status, 200);
+  assert.equal((await login(b.email, currentCode(a.secret))).status, 401, "A's code must not work for B");
+  assert.equal((await login(a.email, currentCode(b.secret))).status, 401, "B's code must not work for A");
+  // the secret shown at setup is never shown again, and setup cannot be re-run to read or replace it
+  assert.equal((await call("POST", "/auth/mfa/setup", a.access)).status, 409);
+});

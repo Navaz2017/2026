@@ -18,7 +18,8 @@
     "dev:wa": "tsx watch --env-file=.env src/jobs/wa-worker.ts",
     "seed": "tsx --env-file=.env scripts/dev-seed.ts",
     "create-owner": "tsx --env-file=.env scripts/create-owner.ts",
-    "reset-mfa": "tsx --env-file=.env scripts/reset-mfa.ts"
+    "reset-mfa": "tsx --env-file=.env scripts/reset-mfa.ts",
+    "wa:check": "tsx --env-file=.env scripts/wa-check.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.0",

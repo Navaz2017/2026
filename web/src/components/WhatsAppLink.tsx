@@ -26,7 +26,10 @@ export function WhatsAppLink({ s, checks, connect, disconnect, test, reload, can
   }, [s.desired, s.status, reload]);
   useEffect(() => { if (s.qr) QRCode.toDataURL(s.qr, { margin: 1, width: 260 }).then(setImg); else setImg(""); }, [s.qr]);
 
-  const err = s.lastError?.startsWith("wa_err:") ? t(`wa.err.${s.lastError.slice(7)}`) : s.lastError;
+  // "wa_err:<reason>[:<technical detail>]" from the WhatsApp service -> a sentence people understand (+ the raw detail for the person fixing it)
+  const [, code, ...rest] = s.lastError?.startsWith("wa_err:") ? s.lastError.split(":") : [];
+  const err = code ? t(`wa.err.${code}`) : s.lastError;
+  const detail = rest.join(":");
   const ready = canAct && checks.every((c) => c.ok);
   const idle = !s.desired || s.status === "FAILED" || s.status === "DISCONNECTED";
 
@@ -38,7 +41,7 @@ export function WhatsAppLink({ s, checks, connect, disconnect, test, reload, can
       <Card>
         <div className="row"><Badge ns="st.wa" value={s.status} /></div>
         {s.status === "CONNECTED" && <><Msg kind="ok">{t("inst.waLinkedAs", { phone: s.phone ?? "" })}</Msg><p className="muted">{t("wa.linkedHelp")}</p></>}
-        {s.status === "FAILED" && <Msg kind="err">{err}</Msg>}
+        {s.status === "FAILED" && <Msg kind="err">{err}{detail ? <><br /><small>{t("wa.err.details")}: {detail}</small></> : null}</Msg>}
         {pairing && s.status === "STARTING" && <p className="muted">{t("wa.starting")}</p>}
         {s.status === "QR" && <><p>{t("inst.waScan")}</p>{img && <div className="qr"><img src={img} alt="WhatsApp QR" width={260} height={260} /></div>}</>}
         {s.status === "CODE" && s.pairingCode && <><p>{t("wa.enterCode")}</p><div className="pairing" aria-live="polite" data-testid="pairing-code">{s.pairingCode}</div></>}

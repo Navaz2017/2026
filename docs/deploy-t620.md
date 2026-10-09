@@ -104,8 +104,15 @@ sudo apt install -y certbot python3-certbot-nginx && sudo certbot --nginx -d exa
 4. Send a test payment through the whole flow with a small amount before real applicants.
 
 ## 9. WhatsApp linking (optional)
-It needs a real browser on the server. Install Google Chrome (free `.deb` from Google's site) and set in `backend.env`:
-`PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable`. Then `sudo systemctl enable --now enrolla-wa`. Run exactly one instance.
+It needs a real browser on the server (Ubuntu 22.04):
+```bash
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install -y ./google-chrome-stable_current_amd64.deb      # also installs the libraries Chrome needs
+echo 'WHATSAPP_CHROME_PATH=/usr/bin/google-chrome-stable' | sudo tee -a /etc/enrolla/backend.env
+cd /opt/enrolla/backend && sudo -u enrolla bash -c 'set -a; . /etc/enrolla/backend.env; set +a; npx tsx scripts/wa-check.ts'   # must end with "All good"
+sudo systemctl enable --now enrolla-wa
+```
+Run exactly one instance. Each institution's login lives in its own folder under `WA_DATA_DIR` (`session-<institution id>`), included in the nightly backup.
 Read `docs/whatsapp.md` first (it is an unofficial method; numbers can be banned).
 
 ## 10. Backups (do not skip)

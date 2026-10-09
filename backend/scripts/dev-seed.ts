@@ -21,19 +21,20 @@ function png(w: number, h: number, px: (x: number, y: number) => [number, number
 }
 
 if (config.NODE_ENV === "production") throw new Error("dev-seed must not run in production");
-export const DEV_MFA_SECRET = "JBSWY3DPEHPK3PXP";
+// Every demo account has its OWN authenticator secret (real accounts get a random one at setup).
+export const DEV_MFA_SECRETS = { owner: "JBSWY3DPEHPK3PXP", school: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" } as const;
 const passwordHash = await hash("Passw0rd-demo1", { memoryCost: 19456, timeCost: 2, parallelism: 1 });
 const verified = { phoneVerifiedAt: new Date() };
-const mfa = { mfaEnabled: true, mfaSecret: encrypt(DEV_MFA_SECRET) };
+const mfa = (who: keyof typeof DEV_MFA_SECRETS) => ({ mfaEnabled: true, mfaSecret: encrypt(DEV_MFA_SECRETS[who]) });
 
-const owner = await prisma.user.upsert({ where: { email: "owner@enrolla.test" }, update: {}, create: { email: "owner@enrolla.test", fullName: "Demo Owner", role: "SYSTEM_OWNER", passwordHash, ...mfa } });
+const owner = await prisma.user.upsert({ where: { email: "owner@enrolla.test" }, update: { ...mfa("owner") }, create: { email: "owner@enrolla.test", fullName: "Demo Owner", role: "SYSTEM_OWNER", passwordHash, ...mfa("owner") } });
 if (!(await prisma.revenueConfig.count())) await prisma.revenueConfig.create({ data: { institutionCommissionBps: 3000, studentServiceFeeBps: 3000, createdById: owner.id } });
 await prisma.setting.upsert({ where: { key: "pay.AIRTEL_MONEY" }, update: {}, create: { key: "pay.AIRTEL_MONEY", value: "+265999000111" } });
 await prisma.setting.upsert({ where: { key: "pay.MPAMBA" }, update: {}, create: { key: "pay.MPAMBA", value: "+265888000222" } });
 
 const inst = (await prisma.institution.findFirst({ where: { name: "Zomba Demo University" } })) ??
   (await prisma.institution.create({ data: { name: "Zomba Demo University", type: "UNIVERSITY", district: "Zomba", contactEmail: "admissions@zdu.test", status: "VERIFIED", verifiedAt: new Date() } }));
-await prisma.user.upsert({ where: { email: "school@enrolla.test" }, update: {}, create: { email: "school@enrolla.test", phone: "+265888000333", fullName: "Demo Registrar", role: "INSTITUTION_ADMIN", ...verified, institutionId: inst.id, passwordHash, ...mfa } });
+await prisma.user.upsert({ where: { email: "school@enrolla.test" }, update: { ...mfa("school") }, create: { email: "school@enrolla.test", phone: "+265888000333", fullName: "Demo Registrar", role: "INSTITUTION_ADMIN", ...verified, institutionId: inst.id, passwordHash, ...mfa("school") } });
 const prog = (await prisma.program.findFirst({ where: { institutionId: inst.id, title: "BSc Computer Science" } })) ??
   (await prisma.program.create({ data: { institutionId: inst.id, title: "BSc Computer Science", level: "Undergraduate", code: "BSCS", seats: 30, applicationFee: 1_000_000, tuitionFeeMinor: 80_000_000, tuitionPeriod: "SEMESTER", duration: "4 years", modes: ["FULL_TIME", "WEEKEND"], entryRequirements: "Six MSCE credits including English and Mathematics", status: "ACTIVE" } }));
 
@@ -76,5 +77,5 @@ if (!(await prisma.application.findFirst({ where: { studentId: student.id } })))
   const a = await prisma.application.create({ data: { studentId: student.id, institutionId: inst.id, programId: prog.id, choices: { create: [{ programId: prog.id, rank: 1 }] }, status: "SUBMITTED", form: DEMO_FORM, statement: "I want to study computing to build tools for farmers.", attachedCredentialIds: [cred.id], feeMinor: 1_000_000, studentServiceFeeMinor: 300_000, commissionMinor: 300_000, totalDueMinor: 1_300_000 } });
   await prisma.payment.create({ data: { applicationId: a.id, provider: "MPAMBA", reference: "DEMO0001XYZ", payerPhone: "+265881000000", amountMinor: 1_300_000, status: "CONFIRMED", confirmedAt: new Date() } });
 }
-console.log("seeded. owner@enrolla.test / school@enrolla.test / student@enrolla.test  password Passw0rd-demo1  MFA secret", DEV_MFA_SECRET);
+console.log("seeded. Password for all: Passw0rd-demo1\n  owner@enrolla.test   authenticator secret:", DEV_MFA_SECRETS.owner, "\n  school@enrolla.test  authenticator secret:", DEV_MFA_SECRETS.school, "(a different secret: every account has its own)\n  student@enrolla.test (no authenticator)");
 await prisma.$disconnect();

@@ -19,6 +19,24 @@ Numbers are never shared: letters from institution A leave only through A's sess
 5. Decision letters: the letter job generates the PDF, always emails it, and — if the institution is linked and the
    applicant has a phone — queues a WhatsApp message + PDF (paced 1.5–4 s apart, max 20/min) via the wa-worker.
 
+## Which browser, on which machine (do this first)
+WhatsApp Web runs inside a headless Chrome that the **wa-worker** starts. Check any machine with `npm run wa:check` (backend folder): it starts the
+browser, tries to reach WhatsApp Web, and tells you what to fix.
+
+| Machine | What to do |
+|---|---|
+| **macOS 11 (Big Sur), development** | The Chrome that Puppeteer downloads (146) does not run on Big Sur; **Chrome 138 is the last that does**. `cd backend && npx @puppeteer/browsers install chrome@138`, then put the path it prints in `backend/.env` as `WHATSAPP_CHROME_PATH="…/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"`. Restart `npm run dev:wa`. (Without it the dashboard says so at once.) |
+| **Ubuntu 22.04, production** | `sudo apt install ./google-chrome-stable_current_amd64.deb` (current Chrome works), `WHATSAPP_CHROME_PATH=/usr/bin/google-chrome-stable`. An old browser should never run in production. |
+
+`PUPPETEER_EXECUTABLE_PATH` is accepted too; `WHATSAPP_CHROME_PATH` wins if both are set. The worker prints every step in its terminal
+(`[wa 12:01:09 9f2df396] starting … / QR ready / CONNECTED …`); the dashboard shows the reason in plain words with the technical detail under it.
+
+## One folder, one browser profile, per institution
+Every institution has its own session folder `WA_DATA_DIR/session-<institution id>` (its WhatsApp login **and** its own Chrome profile: cookies, cache,
+IndexedDB), and the platform's number uses `session-platform`. Nothing is shared: linking, QR/code, unlinking (which deletes only that folder) and
+messages are all per institution, and each school links with *its own* phone/number. These folders are credentials: keep them on an encrypted disk,
+`chmod 700`, and back them up (the nightly backup does).
+
 ## You must know
 - **whatsapp-web.js is unofficial.** It automates WhatsApp Web, which can breach WhatsApp's Terms of Service; numbers can be
   banned, and WhatsApp can break it with any update. The dashboard warns institutions. Email + in-app notices always remain.

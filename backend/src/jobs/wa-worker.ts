@@ -10,20 +10,18 @@
 // Work arrives through the database (WaOutbox rows) - no Redis needed.
 import { createRequire } from "node:module";
 import fs from "node:fs/promises";
-import path from "node:path";
 import { prisma } from "../db.js";
-import { config } from "../config.js";
+import os from "node:os";
+import { chromePath, config } from "../config.js";
+import { bigSurWithoutChrome, classifyWaError, waSessionDir } from "../lib/waSupport.js";
 import { getObject } from "../lib/storage.js";
 
 const require = createRequire(import.meta.url);
 const wa = require("whatsapp-web.js") as typeof import("whatsapp-web.js");
 
 const PLATFORM = "platform";
-// Machine-readable reasons the dashboards translate (anything else is shown as it is).
-const friendly = (m: string) =>
-  /ERR_(TUNNEL|INTERNET|NAME_NOT_RESOLVED|CONNECTION|PROXY|TIMED_OUT)/i.test(m) ? "wa_err:network"
-  : /Could not find|Failed to launch|executable|ENOENT|No usable sandbox/i.test(m) ? "wa_err:no_chrome"
-  : m.slice(0, 200);
+const env = { platform: process.platform, osRelease: os.release() };
+const log = (key: string, ...a: unknown[]) => console.log(`[wa ${new Date().toISOString().slice(11, 19)} ${key === PLATFORM ? "platform" : key.slice(0, 8)}]`, ...a);
 const clients = new Map<string, import("whatsapp-web.js").Client>();
 const pairModes = new Map<string, string>(); // key -> phone used for code pairing ("" = QR); a change restarts the pairing
 const starting = new Set<string>();
@@ -36,19 +34,31 @@ async function start(id: string, pairPhone = "") {
   if (clients.has(id) || starting.has(id)) return;
   pairModes.set(id, pairPhone);
   if (clients.size + starting.size >= config.WA_MAX_SESSIONS) return void setState(id, { status: "FAILED", lastError: "Server is at WhatsApp capacity; contact support" });
+  if (bigSurWithoutChrome(env, chromePath)) { // the Chrome that gets downloaded (146) cannot run on macOS 11; tell the admin right away
+    log(id, "macOS 11 detected and no WHATSAPP_CHROME_PATH set");
+    return void setState(id, { status: "FAILED", qr: null, pairingCode: null, lastError: "wa_err:mac11:no WHATSAPP_CHROME_PATH configured" });
+  }
   starting.add(id);
+  log(id, "starting", pairPhone ? "(phone-number code)" : "(QR)", "profile:", waSessionDir(config.WA_DATA_DIR, id), "chrome:", chromePath ?? "bundled");
   const c = new wa.Client({
     authStrategy: new wa.LocalAuth({ clientId: id, dataPath: config.WA_DATA_DIR }), // session survives restarts: no re-scan needed
     ...(pairPhone && { pairWithPhoneNumber: { phoneNumber: pairPhone.replace(/\D/g, ""), showNotification: true } }), // 8-character code instead of a QR scan
-    puppeteer: { headless: true, executablePath: config.PUPPETEER_EXECUTABLE_PATH, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"] },
+    puppeteer: { headless: true, executablePath: chromePath, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"] },
   });
-  c.on("qr", (qr) => setState(id, { status: "QR", qr, lastError: null }));
-  c.on("code", (code) => setState(id, { status: "CODE", pairingCode: code, qr: null, lastError: null }));
-  c.on("ready", () => { starting.delete(id); setState(id, { status: "CONNECTED", qr: null, pairingCode: null, pairPhone: null, phone: c.info?.wid?.user ? `+${c.info.wid.user}` : null, lastError: null }); });
-  c.on("auth_failure", (m) => setState(id, { status: "FAILED", lastError: `Authentication failed: ${m}` }));
-  c.on("disconnected", async (reason) => { await teardown(id, false); setState(id, { status: "DISCONNECTED", qr: null, pairingCode: null, phone: null, lastError: String(reason) }); });
+  c.on("loading_screen", (pct, msg) => log(id, `loading ${pct}% ${msg}`));
+  c.on("qr", (qr) => { log(id, "QR ready"); setState(id, { status: "QR", qr, lastError: null }); });
+  c.on("code", (code) => { log(id, "pairing code ready"); setState(id, { status: "CODE", pairingCode: code, qr: null, lastError: null }); });
+  c.on("ready", () => { log(id, "CONNECTED as", c.info?.wid?.user); starting.delete(id); setState(id, { status: "CONNECTED", qr: null, pairingCode: null, pairPhone: null, phone: c.info?.wid?.user ? `+${c.info.wid.user}` : null, lastError: null }); });
+  c.on("auth_failure", (m) => { log(id, "auth failure", m); setState(id, { status: "FAILED", lastError: `Authentication failed: ${m}` }); });
+  c.on("disconnected", async (reason) => { log(id, "disconnected:", reason); await teardown(id, false); setState(id, { status: "DISCONNECTED", qr: null, pairingCode: null, phone: null, lastError: String(reason) }); });
   clients.set(id, c);
-  try { await c.initialize(); } catch (e) { await teardown(id, false); setState(id, { status: "FAILED", qr: null, pairingCode: null, lastError: friendly((e as Error).message) }); }
+  try { await c.initialize(); }
+  catch (e) {
+    const msg = (e as Error).message;
+    log(id, "FAILED to start:", msg);              // full reason in the terminal
+    await teardown(id, false);
+    setState(id, { status: "FAILED", qr: null, pairingCode: null, lastError: classifyWaError(msg, env) });
+  }
   starting.delete(id);
 }
 
@@ -58,7 +68,7 @@ async function teardown(id: string, logout: boolean) {
   if (!c) return;
   if (logout) await c.logout().catch(() => {}); // unlinks the device from the phone
   await c.destroy().catch(() => {});
-  if (logout) await fs.rm(path.join(config.WA_DATA_DIR, `session-${id}`), { recursive: true, force: true }).catch(() => {});
+  if (logout) await fs.rm(waSessionDir(config.WA_DATA_DIR, id), { recursive: true, force: true }).catch(() => {}); // only THIS institution's folder
 }
 
 // Reconcile DB intent with reality every 5 s (also restores sessions after a restart).
@@ -70,7 +80,8 @@ async function reconcile() {
   for (const r of rows) {
     // The admin switched between QR and phone-number pairing before finishing: start the pairing again the new way.
     if (r.desired && clients.has(r.key) && r.status !== "CONNECTED" && pairModes.get(r.key) !== r.pairPhone) await teardown(r.key, false);
-    if (r.desired && !clients.has(r.key) && !starting.has(r.key)) { void start(r.key, r.pairPhone); await new Promise((res) => setTimeout(res, 3000)); } // stagger Chromium launches
+    // A FAILED session is NOT restarted by itself (that would relaunch Chrome every 5 s); the admin's "Try again" sets it back to STARTING.
+    if (r.desired && r.status !== "FAILED" && !clients.has(r.key) && !starting.has(r.key)) { void start(r.key, r.pairPhone); await new Promise((res) => setTimeout(res, 3000)); } // stagger Chromium launches
     if (!r.desired && clients.has(r.key)) { await teardown(r.key, true); await setState(r.key, { status: "DISCONNECTED", qr: null, pairingCode: null, pairPhone: null, phone: null }); }
   }
 }
@@ -127,3 +138,7 @@ async function pump() {
 setInterval(() => pump().catch((e) => console.error("outbox", e)), 1000);
 
 process.on("SIGTERM", async () => { await Promise.all([...clients.keys()].map((id) => teardown(id, false))); process.exit(0); });
+
+// A stray browser/network error must never kill the process that holds every institution's session.
+process.on("unhandledRejection", (e) => console.error("[wa] unhandled rejection:", e));
+process.on("uncaughtException", (e) => console.error("[wa] uncaught exception:", e));

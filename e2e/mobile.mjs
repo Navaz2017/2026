@@ -7,7 +7,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
 const OTPAuth = createRequire(new URL("../backend/package.json", import.meta.url))("otpauth");
-const totp = () => new OTPAuth.TOTP({ algorithm: "SHA1", digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32("JBSWY3DPEHPK3PXP") }).generate();
+const SECRETS = { owner: "JBSWY3DPEHPK3PXP", school: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" }; // every demo account has its OWN authenticator secret
+const totp = (who = "owner") => new OTPAuth.TOTP({ algorithm: "SHA1", digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(SECRETS[who]) }).generate();
 
 const en = JSON.parse(fs.readFileSync(new URL("../shared/i18n/en.json", import.meta.url), "utf8"));
 const ny = JSON.parse(fs.readFileSync(new URL("../shared/i18n/ny.json", import.meta.url), "utf8"));

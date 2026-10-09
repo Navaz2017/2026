@@ -30,9 +30,12 @@ const schema = z.object({
   WA_MAX_SESSIONS: z.coerce.number().default(40),
   // Optional: path to Chromium for whatsapp-web.js (e.g. /usr/bin/chromium).
   PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
+  // Same thing under the name other projects use. Needed on macOS 11 (Chrome 138) and wherever Chrome is not auto-detected.
+  WHATSAPP_CHROME_PATH: z.string().optional(),
 });
 
 export const config = schema.parse(process.env);
+export const chromePath = config.WHATSAPP_CHROME_PATH || config.PUPPETEER_EXECUTABLE_PATH || undefined;
 
 if (config.NODE_ENV === "production") {
   const problems: string[] = [];

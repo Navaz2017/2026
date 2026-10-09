@@ -8,6 +8,7 @@ User=enrolla
 Group=enrolla
 WorkingDirectory=/opt/enrolla/backend
 EnvironmentFile=/etc/enrolla/backend.env
+Environment=HOME=/var/lib/enrolla   # Chrome writes its crash/config files under $HOME
 ExecStart=/usr/bin/node dist/src/jobs/wa-worker.js
 Restart=always
 RestartSec=10

@@ -3,7 +3,8 @@ import { chromium } from "playwright-core";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../backend/package.json", import.meta.url));
 const OTPAuth = require("otpauth");
-const code = () => new OTPAuth.TOTP({ algorithm: "SHA1", digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32("JBSWY3DPEHPK3PXP") }).generate();
+const SECRETS = { owner: "JBSWY3DPEHPK3PXP", school: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" }; // every demo account has its OWN authenticator secret
+const code = (who = "owner") => new OTPAuth.TOTP({ algorithm: "SHA1", digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(SECRETS[who]) }).generate();
 const SHOTS = process.env.SHOTS ?? "./shots", BASE = "http://localhost:3000";
 
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -23,7 +24,7 @@ async function login(page, email, withCode = false) {
   await page.goto(BASE + "/login");
   await page.fill('input[name=identifier]', email); await page.fill('input[name=password]', "Passw0rd-demo1");
   await page.click('form button.btn.primary');
-  if (withCode) { await page.waitForSelector('input[name=code]'); await page.fill('input[name=code]', code()); await page.click('form button.btn.primary'); }
+  if (withCode) { await page.waitForSelector('input[name=code]'); await page.fill('input[name=code]', code(email.startsWith("school") ? "school" : "owner")); await page.click('form button.btn.primary'); }
   await page.waitForURL(/\/app\//, { timeout: 15000 });
 }
 try {
