@@ -17,7 +17,7 @@ mobile/    Expo app for parents & students (iOS + Android) — offline cache + w
 docker-compose.yml   Postgres + Redis for local dev
 ```
 
-Run locally (one command starts the API **and** the WhatsApp service: `cd backend && npm run dev:all`; the separate commands `npm run dev` / `npm run dev:wa` still exist): `docker compose up -d`, then in `backend/`: copy `.env.example` → `.env`, `npm i`, `npx prisma migrate dev`, `npm run dev`
+Run locally (one command starts the API **and** the WhatsApp service: `cd backend && npm run dev:all` (it first runs `prisma generate` + `migrate deploy`, so a `git pull` never leaves the database or client behind); the separate commands `npm run dev` / `npm run dev:wa` still exist): `docker compose up -d`, then in `backend/`: copy `.env.example` → `.env`, `npm i`, `npx prisma migrate dev`, `npm run dev`
 (and `npx tsx src/jobs/worker.ts` for letters). Then `OWNER_EMAIL=… OWNER_PASSWORD=… npx tsx scripts/create-owner.ts` creates the owner and the default 30%/30% revenue config.
 
 ## Name options considered
