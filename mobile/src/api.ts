@@ -11,6 +11,7 @@ let refreshing: Promise<"ok" | "denied" | "offline"> | null = null;
 let onSignedOut: () => void = () => {};
 export const setOnSignedOut = (f: () => void) => { onSignedOut = f; };
 export const hasAccessToken = () => !!access;
+export const getAccessToken = () => access;
 
 export async function storeTokens(a: string, r?: string) { access = a; if (r) await secret.set("rt", r); }
 export async function clearTokens() { access = null; await secret.del("rt"); }

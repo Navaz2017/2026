@@ -4,10 +4,11 @@ import { prisma } from "../db.js";
 import { authenticate, requireMfa, requireRole, requireVerifiedPhone } from "../middleware/auth.js";
 import { body, h } from "../middleware/validate.js";
 import { presignDownload, presignUpload } from "../lib/storage.js";
-import { normalisePhone } from "../lib/phone.js";
 import { DEFAULT_TEMPLATES, renderLetter } from "../lib/letters.js";
 import { enqueueLetter } from "../jobs/queue.js";
 import { applicantUserIds, notifyUsers } from "../lib/notify.js";
+import { sendViaSession, waWorkerOnline } from "../lib/messaging.js";
+import { normalisePhone } from "../lib/phone.js";
 import { ALL_LEVELS, MODES, TUITION_PERIODS, allowedLevels, isSchool, levelLabel, syllabiForLevel } from "../lib/levels.js";
 import { schoolPage } from "./public.js";
 import { audit } from "../lib/audit.js";
@@ -223,16 +224,24 @@ institutions.post("/letter-templates/preview", body(z.object({ body: z.string().
   res.json({ text: renderLetter(req.body.body, { "student.fullName": "Chikondi Banda", "program.title": "Sample Programme", "institution.name": "Your Institution", date: new Date().toISOString().slice(0, 10), signatory: req.body.signatory ?? "" }) });
 }));
 
-// ---- WhatsApp linking (whatsapp-web.js runs in the separate wa-worker process; we only exchange state via the DB)
+// ---- WhatsApp linking: every institution links ITS OWN number (whatsapp-web.js runs in the separate wa-worker process;
+// we only exchange state through the database). Two ways to link: scan a QR, or type an 8-character code on the phone.
 institutions.get("/whatsapp", h(async (req, res) => {
-  const s = await prisma.whatsAppSession.findUnique({ where: { institutionId: inst(req) } });
-  res.set("Cache-Control", "no-store").json(s ? { desired: s.desired, status: s.status, qr: s.status === "QR" ? s.qr : null, phone: s.phone, lastError: s.lastError } : { desired: false, status: "DISCONNECTED", qr: null, phone: null });
+  const [s, i, online] = await Promise.all([prisma.whatsAppSession.findUnique({ where: { institutionId: inst(req) } }), prisma.institution.findUniqueOrThrow({ where: { id: inst(req) }, select: { status: true } }), waWorkerOnline()]);
+  res.set("Cache-Control", "no-store").json({
+    desired: s?.desired ?? false, status: s?.status ?? "DISCONNECTED", phone: s?.phone ?? null, lastError: s?.lastError ?? null,
+    qr: s?.status === "QR" ? s.qr : null, pairingCode: s?.status === "CODE" ? s.pairingCode : null, pairPhone: s?.pairPhone ?? null, // secrets only while pairing
+    workerOnline: online, institutionVerified: i.status === "VERIFIED", mfa: !!req.user!.mfa,
+  });
 }));
 
-institutions.post("/whatsapp/connect", requireMfa, h(async (req, res) => {
+institutions.post("/whatsapp/connect", requireMfa, body(z.object({ phone: z.string().min(6).max(20).optional() })), h(async (req, res) => {
   const i = await prisma.institution.findUniqueOrThrow({ where: { id: inst(req) } });
   if (i.status !== "VERIFIED") return res.status(403).json({ error: "institution_not_verified" });
-  await prisma.whatsAppSession.upsert({ where: { institutionId: i.id }, create: { institutionId: i.id, desired: true, status: "STARTING" }, update: { desired: true, status: "STARTING", lastError: null, qr: null } });
+  let pairPhone: string | null = null;
+  if (req.body.phone) { pairPhone = normalisePhone(req.body.phone); if (!pairPhone) return res.status(400).json({ error: "invalid_phone" }); }
+  const data = { desired: true, status: "STARTING", lastError: null, qr: null, pairingCode: null, pairPhone };
+  await prisma.whatsAppSession.upsert({ where: { institutionId: i.id }, create: { institutionId: i.id, ...data }, update: data });
   await audit(req, "whatsapp.connect", "Institution", i.id);
   res.status(202).json({ ok: true });
 }));
@@ -241,6 +250,20 @@ institutions.post("/whatsapp/disconnect", requireMfa, h(async (req, res) => {
   await prisma.whatsAppSession.updateMany({ where: { institutionId: inst(req) }, data: { desired: false } });
   await audit(req, "whatsapp.disconnect", "Institution", inst(req));
   res.status(202).json({ ok: true });
+}));
+
+// Proves the link works: a short message from THIS institution's number to a number of the admin's choice.
+institutions.post("/whatsapp/test", requireMfa, body(z.object({ phone: z.string().min(6).max(20) })), h(async (req, res) => {
+  const phone = normalisePhone(req.body.phone);
+  if (!phone) return res.status(400).json({ error: "invalid_phone" });
+  const s = await prisma.whatsAppSession.findUnique({ where: { institutionId: inst(req) } });
+  if (s?.status !== "CONNECTED") return res.status(409).json({ error: "whatsapp_not_connected" });
+  if ((await prisma.waOutbox.count({ where: { sessionKey: inst(req), letterId: null, createdAt: { gt: new Date(Date.now() - 3600_000) } } })) >= 5) return res.status(429).json({ error: "otp_limit" }); // 5 test messages/hour: this is not a bulk-message tool
+  const i = await prisma.institution.findUniqueOrThrow({ where: { id: inst(req) }, select: { name: true } });
+  const r = await sendViaSession(inst(req), phone, `${i.name} (via Enrolla): WhatsApp is linked. Decision letters will be sent from this number.`);
+  if (!r.ok) return res.status(502).json({ error: r.error === "not_on_whatsapp" ? "not_on_whatsapp" : "whatsapp_send_failed" });
+  await audit(req, "whatsapp.test", "Institution", inst(req));
+  res.json({ ok: true });
 }));
 
 // ---- Grade requests from students transferring FROM this school.

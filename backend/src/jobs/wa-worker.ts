@@ -19,33 +19,42 @@ const require = createRequire(import.meta.url);
 const wa = require("whatsapp-web.js") as typeof import("whatsapp-web.js");
 
 const PLATFORM = "platform";
+// Machine-readable reasons the dashboards translate (anything else is shown as it is).
+const friendly = (m: string) =>
+  /ERR_(TUNNEL|INTERNET|NAME_NOT_RESOLVED|CONNECTION|PROXY|TIMED_OUT)/i.test(m) ? "wa_err:network"
+  : /Could not find|Failed to launch|executable|ENOENT|No usable sandbox/i.test(m) ? "wa_err:no_chrome"
+  : m.slice(0, 200);
 const clients = new Map<string, import("whatsapp-web.js").Client>();
+const pairModes = new Map<string, string>(); // key -> phone used for code pairing ("" = QR); a change restarts the pairing
 const starting = new Set<string>();
 const setState = (key: string, data: Record<string, unknown>) =>
   (key === PLATFORM
     ? prisma.platformWhatsApp.upsert({ where: { id: PLATFORM }, update: data, create: { id: PLATFORM, ...data } })
     : prisma.whatsAppSession.update({ where: { institutionId: key }, data })).catch(() => {});
 
-async function start(id: string) {
+async function start(id: string, pairPhone = "") {
   if (clients.has(id) || starting.has(id)) return;
+  pairModes.set(id, pairPhone);
   if (clients.size + starting.size >= config.WA_MAX_SESSIONS) return void setState(id, { status: "FAILED", lastError: "Server is at WhatsApp capacity; contact support" });
   starting.add(id);
   const c = new wa.Client({
     authStrategy: new wa.LocalAuth({ clientId: id, dataPath: config.WA_DATA_DIR }), // session survives restarts: no re-scan needed
+    ...(pairPhone && { pairWithPhoneNumber: { phoneNumber: pairPhone.replace(/\D/g, ""), showNotification: true } }), // 8-character code instead of a QR scan
     puppeteer: { headless: true, executablePath: config.PUPPETEER_EXECUTABLE_PATH, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"] },
   });
   c.on("qr", (qr) => setState(id, { status: "QR", qr, lastError: null }));
-  c.on("ready", () => { starting.delete(id); setState(id, { status: "CONNECTED", qr: null, phone: c.info?.wid?.user ? `+${c.info.wid.user}` : null, lastError: null }); });
+  c.on("code", (code) => setState(id, { status: "CODE", pairingCode: code, qr: null, lastError: null }));
+  c.on("ready", () => { starting.delete(id); setState(id, { status: "CONNECTED", qr: null, pairingCode: null, pairPhone: null, phone: c.info?.wid?.user ? `+${c.info.wid.user}` : null, lastError: null }); });
   c.on("auth_failure", (m) => setState(id, { status: "FAILED", lastError: `Authentication failed: ${m}` }));
-  c.on("disconnected", async (reason) => { await teardown(id, false); setState(id, { status: "DISCONNECTED", qr: null, phone: null, lastError: String(reason) }); });
+  c.on("disconnected", async (reason) => { await teardown(id, false); setState(id, { status: "DISCONNECTED", qr: null, pairingCode: null, phone: null, lastError: String(reason) }); });
   clients.set(id, c);
-  try { await c.initialize(); } catch (e) { await teardown(id, false); setState(id, { status: "FAILED", qr: null, lastError: (e as Error).message.slice(0, 200) }); }
+  try { await c.initialize(); } catch (e) { await teardown(id, false); setState(id, { status: "FAILED", qr: null, pairingCode: null, lastError: friendly((e as Error).message) }); }
   starting.delete(id);
 }
 
 async function teardown(id: string, logout: boolean) {
   const c = clients.get(id);
-  clients.delete(id);
+  clients.delete(id); pairModes.delete(id);
   if (!c) return;
   if (logout) await c.logout().catch(() => {}); // unlinks the device from the phone
   await c.destroy().catch(() => {});
@@ -55,15 +64,21 @@ async function teardown(id: string, logout: boolean) {
 // Reconcile DB intent with reality every 5 s (also restores sessions after a restart).
 async function reconcile() {
   const rows = [
-    ...(await prisma.platformWhatsApp.findMany()).map((r) => ({ key: PLATFORM, desired: r.desired })),
-    ...(await prisma.whatsAppSession.findMany()).map((r) => ({ key: r.institutionId, desired: r.desired })),
+    ...(await prisma.platformWhatsApp.findMany()).map((r) => ({ key: PLATFORM, desired: r.desired, pairPhone: r.pairPhone ?? "", status: r.status })),
+    ...(await prisma.whatsAppSession.findMany()).map((r) => ({ key: r.institutionId, desired: r.desired, pairPhone: r.pairPhone ?? "", status: r.status })),
   ];
   for (const r of rows) {
-    if (r.desired && !clients.has(r.key)) { void start(r.key); await new Promise((res) => setTimeout(res, 3000)); } // stagger Chromium launches
-    if (!r.desired && clients.has(r.key)) { await teardown(r.key, true); await setState(r.key, { status: "DISCONNECTED", qr: null, phone: null }); }
+    // The admin switched between QR and phone-number pairing before finishing: start the pairing again the new way.
+    if (r.desired && clients.has(r.key) && r.status !== "CONNECTED" && pairModes.get(r.key) !== r.pairPhone) await teardown(r.key, false);
+    if (r.desired && !clients.has(r.key) && !starting.has(r.key)) { void start(r.key, r.pairPhone); await new Promise((res) => setTimeout(res, 3000)); } // stagger Chromium launches
+    if (!r.desired && clients.has(r.key)) { await teardown(r.key, true); await setState(r.key, { status: "DISCONNECTED", qr: null, pairingCode: null, pairPhone: null, phone: null }); }
   }
 }
 setInterval(() => reconcile().catch((e) => console.error("reconcile", e)), 5000);
+
+// The dashboards use this to say "the WhatsApp service is not running" instead of waiting forever on "Starting".
+const beat = () => prisma.setting.upsert({ where: { key: "wa.heartbeat" }, update: { value: new Date().toISOString() }, create: { key: "wa.heartbeat", value: new Date().toISOString() } }).catch(() => {});
+setInterval(beat, 5000); void beat();
 
 // ---- outbox
 const NOT_ON_WA = "not_on_whatsapp";

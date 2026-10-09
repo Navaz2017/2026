@@ -35,3 +35,23 @@ export async function sendPlatformMessage(phone: string, text: string, waitMs = 
 }
 
 export const devEcho = () => config.NODE_ENV !== "production";
+
+// The wa-worker writes a timestamp every 5 s. Older than 20 s = the WhatsApp service is not running.
+export async function waWorkerOnline() {
+  const r = await prisma.setting.findUnique({ where: { key: "wa.heartbeat" } });
+  return !!r && Date.now() - new Date(r.value).getTime() < 20_000;
+}
+
+// Send through one specific WhatsApp session (an institution's own number, or "platform") and wait for the outcome.
+export async function sendViaSession(sessionKey: string, phone: string, text: string, waitMs = 15_000): Promise<{ ok: boolean; error?: string }> {
+  const row = await prisma.waOutbox.create({ data: { sessionKey, toPhone: phone, text, maxAttempts: 1 } });
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    const cur = await prisma.waOutbox.findUniqueOrThrow({ where: { id: row.id } });
+    if (cur.status === "SENT") return { ok: true };
+    if (cur.status === "FAILED") return { ok: false, error: cur.lastError ?? "failed" };
+    await sleep(250);
+  }
+  await prisma.waOutbox.updateMany({ where: { id: row.id, status: "PENDING" }, data: { status: "CANCELLED" } });
+  return { ok: false, error: "timeout" };
+}

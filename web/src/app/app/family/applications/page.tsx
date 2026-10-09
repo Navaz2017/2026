@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { api, del, post } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { useT } from "@/lib/i18n";
+import { useLiveReload } from "@/lib/realtime";
 import { Badge, Btn, Card, Empty, Field, Loading, Msg, Page, confirmBox, mk, openSigned, useBusy, useLoad } from "@/lib/ui";
 
 function PayForm({ a, info, onDone }: { a: any; info: any; onDone: () => void }) {
@@ -33,6 +34,7 @@ export default function MyApplications() {
   const { t } = useT();
   const justSubmitted = useSearchParams().get("submitted") === "1";
   const { data, error, loading, reload } = useLoad<any[]>("/me/applications");
+  useLiveReload(reload);
   const info = useLoad<any>("/public/payment-info");
   const { busy, msg, run } = useBusy();
   return (

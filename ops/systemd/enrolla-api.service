@@ -4,6 +4,7 @@ After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
+LimitNOFILE=100000   # one open socket per online user (live updates)
 User=enrolla
 Group=enrolla
 WorkingDirectory=/opt/enrolla/backend

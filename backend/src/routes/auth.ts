@@ -12,6 +12,7 @@ import { normalisePhone } from "../lib/phone.js";
 import { newSecret, verifyCode } from "../lib/totp.js";
 import { sendEmail } from "../lib/mailer.js";
 import { audit } from "../lib/audit.js";
+import { publish } from "../realtime.js";
 import { OtpError, checkOtp, sendOtp } from "../lib/otp.js";
 
 export const auth = Router();
@@ -275,6 +276,7 @@ auth.get("/notifications", authenticate, h(async (req, res) => {
 }));
 auth.post("/notifications/read", authenticate, h(async (req, res) => {
   await prisma.notification.updateMany({ where: { userId: req.user!.sub, readAt: null }, data: { readAt: new Date() } });
+  await publish([req.user!.sub], { type: "read" }); // other open devices clear their badge
   res.status(204).end();
 }));
 

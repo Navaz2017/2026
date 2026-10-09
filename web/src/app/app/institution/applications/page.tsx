@@ -2,12 +2,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useT } from "@/lib/i18n";
+import { useLiveReload } from "@/lib/realtime";
 import { Badge, Card, Empty, Field, Loading, Page, dt, useLoad } from "@/lib/ui";
 
 export default function Applications() {
   const { t } = useT();
   const [status, setStatus] = useState(""), [q, setQ] = useState("");
-  const { data, error, loading } = useLoad<any[]>(`/institution/applications?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ""}`);
+  const { data, error, loading, reload } = useLoad<any[]>(`/institution/applications?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ""}`);
+  useLiveReload(reload);
   return (
     <Page title={t("nav.applications")}>
       <div className="tabs">{["", "SUBMITTED", "UNDER_REVIEW", "ACCEPTED", "REJECTED"].map((s) => <button key={s} className={`tab ${s === status ? "on" : ""}`} onClick={() => setStatus(s)}>{s ? t(`st.app.${s}`) : t("common.all")}</button>)}</div>

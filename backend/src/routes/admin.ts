@@ -10,7 +10,7 @@ import { audit } from "../lib/audit.js";
 import { normalisePhone } from "../lib/phone.js";
 import { announce, reconcile } from "../lib/reconcile.js";
 import { notifyUsers, applicantUserIds } from "../lib/notify.js";
-import { sendPlatformMessage } from "../lib/messaging.js";
+import { sendPlatformMessage, waWorkerOnline } from "../lib/messaging.js";
 import { smsConfigured } from "../lib/sms.js";
 import { config } from "../config.js";
 
@@ -280,12 +280,15 @@ admin.get("/audit", h(async (req, res) => {
 admin.get("/messaging", h(async (_req, res) => {
   const w = await prisma.platformWhatsApp.findUnique({ where: { id: "platform" } });
   res.set("Cache-Control", "no-store").json({
-    whatsapp: w ? { desired: w.desired, status: w.status, qr: w.status === "QR" ? w.qr : null, phone: w.phone, lastError: w.lastError } : { desired: false, status: "DISCONNECTED", qr: null, phone: null, lastError: null },
+    whatsapp: { desired: w?.desired ?? false, status: w?.status ?? "DISCONNECTED", qr: w?.status === "QR" ? w.qr : null, pairingCode: w?.status === "CODE" ? w.pairingCode : null, pairPhone: w?.pairPhone ?? null, phone: w?.phone ?? null, lastError: w?.lastError ?? null, workerOnline: await waWorkerOnline() },
     sms: { configured: smsConfigured(), env: config.AT_ENV, senderId: config.AT_SENDER_ID ?? null },
   });
 }));
-admin.post("/messaging/whatsapp/connect", h(async (req, res) => {
-  await prisma.platformWhatsApp.upsert({ where: { id: "platform" }, create: { desired: true, status: "STARTING" }, update: { desired: true, status: "STARTING", lastError: null, qr: null } });
+admin.post("/messaging/whatsapp/connect", body(z.object({ phone: z.string().min(6).max(20).optional() })), h(async (req, res) => {
+  let pairPhone: string | null = null;
+  if (req.body.phone) { pairPhone = normalisePhone(req.body.phone); if (!pairPhone) return res.status(400).json({ error: "invalid_phone" }); }
+  const data = { desired: true, status: "STARTING", lastError: null, qr: null, pairingCode: null, pairPhone };
+  await prisma.platformWhatsApp.upsert({ where: { id: "platform" }, create: { ...data }, update: data });
   await audit(req, "platform_whatsapp.connect", "Setting", "platform");
   res.status(202).json({ ok: true });
 }));

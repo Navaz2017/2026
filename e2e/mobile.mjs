@@ -4,7 +4,10 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
+const OTPAuth = createRequire(new URL("../backend/package.json", import.meta.url))("otpauth");
+const totp = () => new OTPAuth.TOTP({ algorithm: "SHA1", digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32("JBSWY3DPEHPK3PXP") }).generate();
 
 const en = JSON.parse(fs.readFileSync(new URL("../shared/i18n/en.json", import.meta.url), "utf8"));
 const ny = JSON.parse(fs.readFileSync(new URL("../shared/i18n/ny.json", import.meta.url), "utf8"));
@@ -157,6 +160,25 @@ try {
   await tid("paid").click();
   await page.getByText(T("fam.afterPay")).first().waitFor({ timeout: 15000 });
   check("payment reference sent", true);
+
+  // ---- 6b. the owner confirms the payment: the phone hears about it LIVE (no refresh)
+  await page.goto(BASE + "/applications");
+  await page.getByText("BSc Computer Science").first().waitFor({ timeout: 15000 });
+  await page.getByText(T("st.app.PAYMENT_SUBMITTED")).locator("visible=true").first().waitFor();
+  await vis(/./).waitFor();
+  await page.waitForTimeout(1500); // let the live socket connect
+  const ownerTok = (await (await fetch(`${API}/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: "owner@enrolla.test", password: "Passw0rd-demo1", code: totp() }) })).json()).accessToken;
+  const oh = { Authorization: `Bearer ${ownerTok}`, "Content-Type": "application/json" };
+  const pays = await (await fetch(`${API}/v1/admin/payments?status=PENDING`, { headers: oh })).json();
+  const mine = pays.find((p) => p.payerPhone?.endsWith("999111222"));
+  const conf = await fetch(`${API}/v1/admin/payments/${mine.id}/manual-confirm`, { method: "POST", headers: oh, body: JSON.stringify({ reason: "e2e: SMS did not arrive, checked the Airtel statement" }) });
+  check("owner confirms the payment", conf.ok, String(conf.status));
+  await page.getByTestId("live-toast").waitFor({ timeout: 10000 });
+  check("phone shows a live banner with the news (no refresh)", (await page.getByTestId("live-toast").innerText()).includes(T("notif.PAYMENT_CONFIRMED")));
+  await page.screenshot({ path: `${SHOTS}/m-live.png` });
+  await page.getByText(T("st.app.SUBMITTED")).locator("visible=true").first().waitFor({ timeout: 10000 });
+  check("applications list flips to 'Received by school' by itself", true);
+  check("notifications tab shows an unread badge", await page.getByRole("tab", { name: new RegExp(T("nav.notifications")) }).innerText().then((x) => /\d/.test(x)));
 
   // ---- 7. my applications + offline reading
   await page.goto(BASE + "/applications");

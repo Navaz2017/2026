@@ -5,6 +5,7 @@ import { ActivityIndicator, View } from "react-native";
 import { LanguageProvider, useT } from "../src/i18n";
 import { SessionProvider, useSession } from "../src/session";
 import { C } from "../src/ui";
+import { LiveToast } from "../src/LiveToast";
 
 function Shell() {
   const { loading } = useSession();
@@ -29,6 +30,7 @@ function Shell() {
         <Stack.Screen name="documents" options={{ title: t("nav.myDocs") }} />
         <Stack.Screen name="password" options={{ title: t("sec.changeTitle") }} />
       </Stack>
+      <LiveToast />
     </>
   );
 }

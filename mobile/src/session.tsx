@@ -3,6 +3,7 @@ import { ApiError, authCall, clearTokens, get, hasRefreshToken, logoutRemote, pa
 import { useT, type Lang } from "./i18n";
 import { kv } from "./kv";
 import { clearOfflineData, flushOutbox } from "./offline";
+import { startRealtime, stopRealtime } from "./realtime";
 
 export type Role = "SYSTEM_OWNER" | "INSTITUTION_ADMIN" | "PARENT" | "STUDENT";
 export interface User { id: string; email: string | null; phone: string | null; phoneVerified: boolean; fullName: string; role: Role; language: Lang; institutionId: string | null }
@@ -40,6 +41,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [ready, load]);
 
   useEffect(() => { if (user) void flushOutbox().catch(() => {}); }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // live channel for verified family accounts; stops on sign-out
+  useEffect(() => { if (user?.phoneVerified && (user.role === "PARENT" || user.role === "STUDENT")) { startRealtime(); return () => stopRealtime(); } }, [user?.id, user?.phoneVerified]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signIn: Ctx["signIn"] = async (path, body) => {
     const d = await authCall(path, body);

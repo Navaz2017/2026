@@ -261,6 +261,15 @@ try {
     check("the same recovery code cannot be used twice", await p3.locator(".msg.err").waitFor({ timeout: 8000 }).then(() => true).catch(() => false));
     await c3.close(); }
 
+  // 4a. the student has the app open (live channel) BEFORE the school decides
+  const stu = await fresh();
+  await login(stu.page, "student@enrolla.test");
+  await stu.page.click('nav.side a[href="/app/family/applications"]');
+  await stu.page.waitForSelector(".badge");
+  await stu.page.waitForSelector(".live.on", { timeout: 15000 });
+  check("live channel connects (green dot in the header)", true);
+  check("student sees no 'Accepted' yet", !(await stu.page.locator("main, .main").innerText()).includes("Mwalandiridwa"));
+
   // 4. institution: review applicant, view credential, accept
   ({ ctx, page } = await fresh());
   await login(page, "school@enrolla.test", true);
@@ -279,12 +288,32 @@ try {
   await page.getByRole("button", { name: /Accept/ }).click({ timeout: 8000 }).catch(async () => { console.log("BUTTONS:", JSON.stringify(await page.locator("button").evaluateAll((bs) => bs.map((b) => [b.innerText, b.disabled])))); console.log("MSG:", (await page.locator(".msg").allInnerTexts()).join(" | ")); throw new Error("accept click"); });
   await page.waitForSelector(".badge:has-text('Accepted')", { timeout: 10000 }).catch(async () => { console.log("PAGE TEXT:", (await page.locator(".main").innerText()).slice(0, 600)); throw new Error("accept"); });
   check("applicant accepted; seat counted", true);
+  // ... and the student's already-open page updates by itself: toast + badge + list, NO reload
+  await stu.page.waitForSelector(".toast", { timeout: 10000 });
+  check("student gets a live pop-up the moment the school accepts", true, (await stu.page.locator(".toast").first().innerText()).replace(/\n/g, " "));
+  check("bell badge increments without reload", Number(await stu.page.locator(".iconbtn .n").first().innerText()) >= 1);
+  await stu.page.waitForFunction(() => document.querySelector("main, .main")?.textContent?.includes("Mwalandiridwa"), null, { timeout: 10000 });
+  check("student's application list flips to Accepted without reload", true);
+  await stu.page.screenshot({ path: `${SHOTS}/student-live.png` });
+  await stu.ctx.close();
   check("only one nav item is highlighted", (await page.locator("nav.side a.on").count()) === 1);
   await page.screenshot({ path: `${SHOTS}/institution-applicant.png`, fullPage: true });
   await page.click('nav.side a[href="/app/institution/whatsapp"]'); await page.waitForSelector("text=Not linked");
-  await page.getByRole("button", { name: /Link WhatsApp/ }).click();
-  await page.waitForSelector(".badge:has-text('Starting')");
-  check("WhatsApp link requested (wa-worker not running here -> stays Starting)", true);
+  await page.screenshot({ path: `${SHOTS}/institution-whatsapp.png`, fullPage: true });
+  check("WhatsApp page shows the checklist (verified, two-step)", (await page.locator("main").innerText()).includes("Your institution is verified") && (await page.locator("main").innerText()).includes("Two-step security is on"));
+  const running = await page.getByText("The WhatsApp service is running on the server").waitFor({ timeout: 12000 }).then(() => true, () => false);
+  if (!running) {
+    check("service down: clear message and linking is disabled", (await page.locator("main").innerText()).includes("not running on the server") && await page.getByRole("button", { name: /Link WhatsApp/ }).isDisabled());
+  } else {
+    // link by phone-number code (the QR way is the other tab). Without internet the server cannot reach WhatsApp: the page must say so plainly.
+    await page.getByRole("button", { name: "Use a phone-number code" }).click();
+    await page.locator('input[type=tel]').fill("0999 123 456");
+    await page.getByRole("button", { name: "Get code" }).click();
+    await page.waitForSelector(".badge:has-text('Starting'), .badge:has-text('Enter the code'), .badge:has-text('Problem'), .badge:has-text('Scan the code')", { timeout: 15000 });
+    await page.waitForSelector("[data-testid=pairing-code], .msg.err", { timeout: 60000 });
+    const body = await page.locator("main").innerText();
+    check("WhatsApp: pairing code shown, or a readable reason when WhatsApp is unreachable", /Enter the code|cannot reach WhatsApp|Chrome or Chromium/.test(body) || (await page.locator("[data-testid=pairing-code]").count()) > 0, body.replace(/\n/g, " ").slice(0, 160));
+  }
   await page.click('nav.side a[href="/app/institution/programs"]'); await page.waitForSelector("text=1 of 30 seats taken");
   check("programme shows seat taken", true);
   check("programme list shows tuition", (await page.locator("main").innerText()).includes("MK 800,000 per semester"));

@@ -4,11 +4,17 @@
 > **the platform's number** (sign-up codes; the owner links it in *Owner → Messaging*, see `phone-verification.md`).
 > Work reaches the worker through the `WaOutbox` database table (no Redis involved); the old BullMQ `wa-send` queue is gone.
 
-Each verified institution links **its own WhatsApp number** from *Dashboard → WhatsApp* (two-step security required):
-1. Click **Link WhatsApp** → the API records `desired=true`.
+Each verified institution links **its own WhatsApp number** from *Dashboard → WhatsApp* (two-step security required). The page opens
+with a checklist (WhatsApp service running? institution verified? two-step security on?) so it is obvious what is missing, then offers
+two ways to link: **scan a QR code**, or **type the school's number and enter an 8-character code** on that phone
+(*WhatsApp → Linked devices → Link a device → Link with phone number instead*). Once linked, **Send test** proves it works.
+Numbers are never shared: letters from institution A leave only through A's session (`WaOutbox.sessionKey` = institution id).
+1. Click **Link WhatsApp** (or *Get code*) → the API records `desired=true` (and the phone, for code pairing).
 2. The separate **wa-worker** process (`npm run wa-worker`) sees that, starts a headless Chromium with a persistent
    `LocalAuth` session for that institution, and publishes the pairing QR into the DB (`WhatsAppSession`).
-3. The dashboard shows the QR (refreshing every 3 s). The registrar scans it in *WhatsApp → Linked devices*.
+3. The dashboard shows the QR or the 8-character code (refreshing every 3 s). Switching method restarts the pairing.
+   The worker writes a heartbeat every 5 s; if it is older than 20 s the page says "the WhatsApp service is not running".
+   Typical failures are shown in plain words (server cannot reach WhatsApp; Chrome/Chromium not installed).
 4. Status becomes **Linked** with the number. Sessions survive restarts (no re-scan). **Unlink** logs the device out and deletes the session.
 5. Decision letters: the letter job generates the PDF, always emails it, and — if the institution is linked and the
    applicant has a phone — queues a WhatsApp message + PDF (paced 1.5–4 s apart, max 20/min) via the wa-worker.

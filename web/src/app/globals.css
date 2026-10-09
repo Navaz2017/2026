@@ -134,3 +134,12 @@ textarea { min-height: 140px; } input[type=checkbox] { width: 22px; height: 22px
 .thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; } .thumb .cap { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(11,37,69,.78); color: #fff; font-size: .8rem; padding: .3rem .5rem; } .thumb .play { position: absolute; background: rgba(11,37,69,.7); color: #fff; border-radius: 50%; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; }
 .lightbox { position: fixed; inset: 0; background: rgba(5,12,24,.92); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; } .lbbody { max-width: min(1100px, 100%); max-height: 100%; text-align: center; color: #fff; } .lbbody img, .lbbody video { max-width: 100%; max-height: 72vh; border-radius: var(--radius); } .lbclose { position: absolute; top: 1rem; right: 1rem; background: rgba(255,255,255,.15); color: #fff; border: 0; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .subjrow { display: grid; grid-template-columns: 1fr 110px auto; gap: .5rem; align-items: end; }
+
+/* ---- live updates ---- */
+.live { width: 10px; height: 10px; border-radius: 50%; background: #8a93a3; display: inline-block; } .live.on { background: #3ecf8e; }
+.toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: .5rem; z-index: 60; max-width: min(420px, calc(100vw - 2rem)); }
+.toast { background: var(--navy); color: #fff; border-left: 4px solid var(--gold); padding: .8rem 1rem; border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,.25); animation: toastin .25s ease-out; }
+.toast a { color: #ffe08a; margin-left: .5rem; white-space: nowrap; }
+@keyframes toastin { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.pairing { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 2.2rem; letter-spacing: .25em; font-weight: 700; color: var(--navy); background: var(--bg); border: 2px dashed var(--line-strong); border-radius: var(--radius); padding: .6rem 1rem; display: inline-block; margin: .4rem 0 1rem; }

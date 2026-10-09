@@ -8,6 +8,7 @@ import { NAV } from "@/lib/nav";
 import { useSession, homeFor } from "@/lib/session";
 import { useT } from "@/lib/i18n";
 import { api } from "@/lib/api";
+import { useRealtime } from "@/lib/realtime";
 import { Msg } from "@/lib/ui";
 
 const ROLE_PREFIX: Record<string, string> = { SYSTEM_OWNER: "/app/owner", INSTITUTION_ADMIN: "/app/institution" };
@@ -17,7 +18,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut, changeLanguage } = useSession();
   const { t } = useT();
   const path = usePathname(), router = useRouter();
-  const [unread, setUnread] = useState(0);
+  const { unread, setUnread, connected } = useRealtime();
 
   useEffect(() => { if (!loading && !user) router.replace("/login"); }, [loading, user, router]);
   // A parent opening an owner URL (etc.) is sent home; the API would refuse the data anyway.
@@ -34,12 +35,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (!user) return;
     let timer: ReturnType<typeof setTimeout>;
     const tick = async () => {
-      if (document.visibilityState === "visible") { try { setUnread((await api<any[]>("/auth/notifications")).filter((n) => !n.readAt).length); } catch {} }
+      if (document.visibilityState === "visible" && !connected) { // fallback: only while the live channel is down
+        try { setUnread((await api<any[]>("/auth/notifications")).filter((n) => !n.readAt).length); } catch {} }
       timer = setTimeout(tick, 60_000 + Math.random() * 30_000);
     };
     tick();
     return () => clearTimeout(timer);
-  }, [user]);
+  }, [user, connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading || !user) return <p className="muted" style={{ padding: 24 }}>{t("common.loading")}</p>;
   // Highlight only the most specific matching entry (so "Overview" is not lit while "Applications" is open).
@@ -50,6 +52,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <>
       <SiteHeader onLang={changeLanguage}>
         <Link href="/app/notifications" className="iconbtn" aria-label={t("nav.notifications")}><Icon name="bell" size={20} />{unread > 0 && <span className="n">{unread}</span>}</Link>
+        <span className={`live ${connected ? "on" : ""}`} title={connected ? t("rt.live") : t("rt.reconnecting")} aria-label={connected ? t("rt.live") : t("rt.reconnecting")} />
         <span className="user">{user.fullName}</span>
         <button className="out" onClick={signOut}>{t("auth.signOut")}</button>
       </SiteHeader>

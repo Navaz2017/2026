@@ -12,7 +12,7 @@ export function middleware(req: NextRequest) {
     "style-src 'self' 'unsafe-inline'", // React inline style attributes
     `img-src 'self' data: blob: https: ${api}`,
     `media-src 'self' https: ${api}`,
-    `connect-src 'self' ${api} https:`, // https: for direct-to-S3 uploads
+    `connect-src 'self' ${api} ${api.replace(/^http/, "ws")} https: wss:`, // ws(s): live updates from our own API; https: for direct uploads
     "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'",
   ].join("; ");
   const headers = new Headers(req.headers);

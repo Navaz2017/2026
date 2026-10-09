@@ -1,11 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useT } from "@/lib/i18n";
+import { useLiveReload } from "@/lib/realtime";
 import { Badge, Card, Loading, Msg, Page, mk, useLoad } from "@/lib/ui";
 
 export default function InstitutionHome() {
   const { t } = useT();
-  const { data: d, error, loading } = useLoad<any>("/institution/dashboard");
+  const { data: d, error, loading, reload } = useLoad<any>("/institution/dashboard");
+  useLiveReload(reload);
   const st = d?.institution.status;
   return (
     <Page title={d?.institution.name ?? t("inst.title")}>

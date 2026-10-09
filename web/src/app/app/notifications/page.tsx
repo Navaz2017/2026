@@ -3,10 +3,12 @@ import { useEffect } from "react";
 import { post } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Card, Empty, Loading, Page, dtt, useLoad } from "@/lib/ui";
+import { useLiveReload } from "@/lib/realtime";
 
 export default function Notifications() {
   const { t } = useT();
-  const { data, error, loading } = useLoad<any[]>("/auth/notifications");
+  const { data, error, loading, reload } = useLoad<any[]>("/auth/notifications");
+  useLiveReload(reload, ["notification", "ready"]);
   useEffect(() => { if (data?.some((n) => !n.readAt)) post("/auth/notifications/read").catch(() => {}); }, [data]);
   return (
     <Page title={t("nav.notifications")}>

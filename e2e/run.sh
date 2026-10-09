@@ -17,8 +17,10 @@ cd "$ROOT/backend"
 npx prisma migrate deploy >/dev/null && npx tsx scripts/dev-seed.ts >/dev/null
 psql "$DATABASE_URL" -q -f "$ROOT/e2e/reset.sql" 2>/dev/null
 npx tsx src/server.ts >/tmp/e2e-api.log 2>&1 & API=$!
+# WhatsApp service (needs Chromium: set CHROME_PATH). Without internet the test expects a readable "cannot reach WhatsApp" message.
+WAW=; if [ -n "${CHROME_PATH:-}" ]; then WA_DATA_DIR=$(mktemp -d) PUPPETEER_EXECUTABLE_PATH=$CHROME_PATH npx tsx src/jobs/wa-worker.ts >/tmp/e2e-wa.log 2>&1 & WAW=$!; fi
 (cd "$ROOT/web" && exec npx next start -p 3000 >/tmp/e2e-web.log 2>&1) & WEB=$!
 for i in $(seq 1 40); do curl -sf localhost:4000/healthz >/dev/null && curl -sf -o /dev/null localhost:3000/ && break; sleep 1; done
 SHOTS="$ROOT/e2e/shots" node "$ROOT/e2e/e2e.mjs"; RC=$?
-kill $API $WEB 2>/dev/null
+kill $API $WEB $WAW 2>/dev/null; [ -n "$WAW" ] && pkill -P $WAW 2>/dev/null
 exit $RC

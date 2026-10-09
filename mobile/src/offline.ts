@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { ApiError, api, get } from "./api";
 import { kv } from "./kv";
 import { isOnline, onReconnect, useNetVersion } from "./net";
+import { useLiveVersion } from "./realtime";
 import { enqueue, flush, type OutboxItem } from "./outbox";
 
 // ---------------------------------------------------------------- read cache (stale-while-revalidate)
@@ -71,6 +72,7 @@ export function useResource<T = any>(path: string | null, transform?: (d: T) => 
   const [offline, setOffline] = useState(false);
   const [tick, setTick] = useState(0);
   const net = useNetVersion();
+  const live = useLiveVersion(); // a live event (new notification, payment confirmed...) refreshes what is on screen
 
   useEffect(() => {
     if (!path) { setData(null); setLoading(false); return; }
@@ -91,7 +93,7 @@ export function useResource<T = any>(path: string | null, transform?: (d: T) => 
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
-  }, [path, tick, net]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [path, tick, net, live]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { data, error, loading, offline, reload: () => setTick((x) => x + 1), setData };
 }

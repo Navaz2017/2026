@@ -127,8 +127,10 @@ model WhatsAppSession {
   institutionId String      @id
   institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
   desired       Boolean     @default(false) // dashboard wants it connected
-  status        String      @default("DISCONNECTED") // DISCONNECTED | STARTING | QR | CONNECTED | FAILED
+  status        String      @default("DISCONNECTED") // DISCONNECTED | STARTING | QR | CODE | CONNECTED | FAILED
   qr            String? // current pairing QR payload (short-lived)
+  pairPhone     String? // number the admin asked to link by 8-character code instead of QR (+265...)
+  pairingCode   String? // the 8-character code to type into WhatsApp -> Linked devices -> Link with phone number
   phone         String? // linked number once connected
   lastError     String?
   updatedAt     DateTime    @updatedAt
@@ -157,6 +159,8 @@ model PlatformWhatsApp {
   desired   Boolean  @default(false)
   status    String   @default("DISCONNECTED") // DISCONNECTED | STARTING | QR | CONNECTED | FAILED
   qr        String?
+  pairPhone String?
+  pairingCode String?
   phone     String?
   lastError String?
   updatedAt DateTime @updatedAt
