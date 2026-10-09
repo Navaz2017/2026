@@ -20,6 +20,15 @@ const require = createRequire(import.meta.url);
 const wa = require("whatsapp-web.js") as typeof import("whatsapp-web.js");
 
 const PLATFORM = "platform";
+// The same database error every few seconds would flood the terminal: print each distinct problem at most once a minute, in one line.
+const lastLogged = new Map<string, number>();
+function logThrottled(what: string, e: unknown) {
+  const msg = ((e as Error)?.message ?? String(e)).split("\n").filter(Boolean).pop() ?? "";
+  const key = `${what}:${msg.slice(0, 80)}`;
+  if (Date.now() - (lastLogged.get(key) ?? 0) < 60_000) return;
+  lastLogged.set(key, Date.now());
+  console.error(`[wa] ${what} problem: ${msg}`);
+}
 const env = { platform: process.platform, osRelease: os.release() };
 const log = (key: string, ...a: unknown[]) => console.log(`[wa ${new Date().toISOString().slice(11, 19)} ${key === PLATFORM ? "platform" : key.slice(0, 8)}]`, ...a);
 const clients = new Map<string, import("whatsapp-web.js").Client>();
@@ -100,7 +109,7 @@ async function reconcile() {
   }
 }
 let reconciling = false;
-setInterval(() => { if (reconciling) return; reconciling = true; reconcile().catch((e) => console.error("reconcile", e)).finally(() => { reconciling = false; }); }, 5000);
+setInterval(() => { if (reconciling) return; reconciling = true; reconcile().catch((e) => logThrottled("reconcile", e)).finally(() => { reconciling = false; }); }, 5000);
 
 // The dashboards use this to say "the WhatsApp service is not running" instead of waiting forever on "Starting".
 const beat = () => prisma.setting.upsert({ where: { key: "wa.heartbeat" }, update: { value: new Date().toISOString() }, create: { key: "wa.heartbeat", value: new Date().toISOString() } }).catch(() => {});
@@ -125,13 +134,16 @@ async function deliver(m: { id: string; sessionKey: string; toPhone: string; tex
   }
 }
 
-let busy = false;
+let busy = false, lastSweep = 0, lastClean = 0;
 async function pump() {
   if (busy) return;
   busy = true;
   try {
-    // A crash mid-send leaves SENDING rows behind: release them after 2 minutes.
-    await prisma.waOutbox.updateMany({ where: { status: "SENDING", updatedAt: { lt: new Date(Date.now() - 120_000) } }, data: { status: "PENDING" } });
+    // Housekeeping runs rarely (not on every tick): fewer queries means less load on the database and on this busy process.
+    if (Date.now() - lastSweep > 60_000) {
+      lastSweep = Date.now(); // a crash mid-send leaves SENDING rows behind: release them after 2 minutes
+      await prisma.waOutbox.updateMany({ where: { status: "SENDING", updatedAt: { lt: new Date(Date.now() - 120_000) } }, data: { status: "PENDING" } });
+    }
     const due = await prisma.waOutbox.findMany({ where: { status: "PENDING", nextAttemptAt: { lte: new Date() } }, orderBy: { createdAt: "asc" }, take: 10 });
     for (const m of due) {
       const claimed = await prisma.waOutbox.updateMany({ where: { id: m.id, status: "PENDING" }, data: { status: "SENDING" } });
@@ -146,11 +158,13 @@ async function pump() {
         await prisma.waOutbox.update({ where: { id: m.id }, data: { attempts, lastError: msg, status: final ? "FAILED" : "PENDING", nextAttemptAt: new Date(Date.now() + 30_000 * 2 ** (attempts - 1)) } });
       }
     }
-    // Housekeeping: keep the table small.
-    await prisma.waOutbox.deleteMany({ where: { status: { in: ["SENT", "FAILED", "CANCELLED"] }, updatedAt: { lt: new Date(Date.now() - 7 * 864e5) } } });
+    if (Date.now() - lastClean > 3600_000) { // keep the table small (hourly)
+      lastClean = Date.now();
+      await prisma.waOutbox.deleteMany({ where: { status: { in: ["SENT", "FAILED", "CANCELLED"] }, updatedAt: { lt: new Date(Date.now() - 7 * 864e5) } } });
+    }
   } finally { busy = false; }
 }
-setInterval(() => pump().catch((e) => console.error("outbox", e)), 1000);
+setInterval(() => pump().catch((e) => logThrottled("outbox", e)), 2000);
 
 process.on("SIGTERM", async () => { await Promise.all([...clients.keys()].map((id) => teardown(id, false))); process.exit(0); });
 
