@@ -15,6 +15,7 @@ new Worker<{ applicationId: string }>(
       include: { student: { include: { user: true, parent: { include: { user: true } } } }, program: { include: { institution: { include: { whatsapp: true } } } } },
     });
     if (app.status !== "ACCEPTED" && app.status !== "REJECTED") return;
+    if (!app.decisionPublishedAt) return; // held: the registrar has not released this letter yet
     const inst = app.program.institution;
     const offered = app.offeredProgramId ? await prisma.program.findUnique({ where: { id: app.offeredProgramId }, select: { title: true } }) : null;
     const kind = app.status === "ACCEPTED" ? "ACCEPTANCE" : "REJECTION";
@@ -46,6 +47,6 @@ new Worker<{ applicationId: string }>(
 
 // Safety net: decisions whose letter job was lost (Redis down, crash) are re-queued every minute.
 setInterval(async () => {
-  const stuck = await prisma.application.findMany({ where: { status: { in: ["ACCEPTED", "REJECTED"] }, decidedAt: { lt: new Date(Date.now() - 90_000) }, letter: null }, select: { id: true }, take: 50 });
+  const stuck = await prisma.application.findMany({ where: { status: { in: ["ACCEPTED", "REJECTED"] }, decidedAt: { lt: new Date(Date.now() - 90_000) }, decisionPublishedAt: { not: null }, letter: null }, select: { id: true }, take: 50 });
   for (const a of stuck) await enqueueLetter(a.id);
 }, 60_000);

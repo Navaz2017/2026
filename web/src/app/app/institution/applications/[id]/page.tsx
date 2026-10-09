@@ -16,14 +16,17 @@ export default function ApplicantFile() {
   const { t } = useT();
   const { user } = useSession();
   const { data: a, error, loading, reload } = useLoad<any>(`/institution/applications/${id}`);
+  const lm = useLoad<any>("/institution/letters/pending");
   const { busy, msg, run } = useBusy();
-  const [note, setNote] = useState(""), [offer, setOffer] = useState("");
+  const [note, setNote] = useState(""), [offer, setOffer] = useState(""), [when, setWhen] = useState<"NOW" | "HOLD" | "">("");
+  const letterWhen = when || (lm.data?.mode === "HOLD" ? "HOLD" : "NOW"); // starts from the school's default
+  const held = a && a.decisionPublishedAt === null && (a.status === "ACCEPTED" || a.status === "REJECTED");
   const decided = a && (a.status === "ACCEPTED" || a.status === "REJECTED");
 
   const view = (cid: string) => run(() => openSigned(async () => (await api(`/institution/applications/${id}/credentials/${cid}/download`)).url));
   const decide = (decision: "ACCEPTED" | "REJECTED") => {
     if (!confirmBox(t(decision === "ACCEPTED" ? "inst.confirmAccept" : "inst.confirmReject"))) return;
-    run(async () => { await post(`/institution/applications/${id}/decision`, { decision, note: note || undefined, ...(decision === "ACCEPTED" && { programId: offer || a.programId }) }); await reload(); });
+    run(async () => { await post(`/institution/applications/${id}/decision`, { decision, note: note || undefined, letter: letterWhen, ...(decision === "ACCEPTED" && { programId: offer || a.programId }) }); await reload(); lm.reload(); });
   };
 
   return (
@@ -57,12 +60,15 @@ export default function ApplicantFile() {
           {a.status === "SUBMITTED" && <Btn kind="ghost" busy={busy} onClick={() => run(async () => { await post(`/institution/applications/${id}/start-review`); await reload(); })}>{t("inst.startReview")}</Btn>}
           <Field label={t("inst.decisionNote")}><textarea style={{ minHeight: 80 }} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           {a.choices.length > 1 && <Sel label={t("ia.offer")} required value={offer || a.programId} onChange={setOffer} options={a.choices.map((c: any) => [c.programId, `${c.rank}. ${c.program.title}`])} />}
+          <Sel label={t("lh.choose")} required value={letterWhen} onChange={(v) => setWhen(v as "NOW" | "HOLD")} options={[["NOW", t("lh.optNow")], ["HOLD", t("lh.optHold")]]} />
           <p className="muted">{t("inst.letterNote")} · {t("nav.programs")}: {t("inst.seatsUsed", { used: a.program.seatsTaken, total: a.program.seats })}</p>
           <div className="row">
             <Btn busy={busy} disabled={!user?.mfa} onClick={() => decide("ACCEPTED")}><Icon name="check" size={18} /> {t("inst.accept")}</Btn>
             <Btn kind="danger" busy={busy} disabled={!user?.mfa} onClick={() => decide("REJECTED")}><Icon name="x" size={18} /> {t("inst.rejectApp")}</Btn>
           </div>
         </Card>}
+        {held && <Card><Msg kind="info">{t("lh.onHold")}: {t("lh.heldNote")}</Msg>
+          <Btn busy={busy} disabled={!user?.mfa} onClick={() => run(async () => { await post(`/institution/applications/${id}/release`); await reload(); lm.reload(); })}>{t("lh.sendThis")}</Btn></Card>}
         {decided && a.decisionNote && <Card><strong>{t("common.note")}:</strong> {a.decisionNote}</Card>}
       </>}
     </Page>

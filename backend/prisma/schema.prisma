@@ -238,6 +238,9 @@ model Institution {
   gradeRequestsIn  GradeRequest[] @relation("GradeRequestTo")
   gradeRequestsOut GradeRequest[] @relation("GradeRequestFrom")
 
+  letterMode       String    @default("IMMEDIATE") // IMMEDIATE = send each letter when the registrar decides; HOLD = keep decisions private until released together
+  lettersReleaseAt DateTime? // HOLD: release every pending letter automatically at this moment (null = release by hand)
+
   @@index([status, type])
 }
 
@@ -359,6 +362,7 @@ model Application {
   programId  String // first-choice programme (rank 1)
   program    Program           @relation(fields: [programId], references: [id])
   offeredProgramId String? // set on acceptance: which choice the institution offers
+  decisionPublishedAt DateTime? // null while a decision is HELD (applicant sees nothing yet); set when the decision + letter are released
   form       Json              @default("{}") // multi-step form answers (education, guardian, sponsor, declaration ...)
   submittedAt DateTime?
   choices    ApplicationChoice[]

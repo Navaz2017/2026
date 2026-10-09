@@ -7,6 +7,7 @@ import { presignDownload, presignUpload } from "../lib/storage.js";
 import { DEFAULT_TEMPLATES, renderLetter } from "../lib/letters.js";
 import { enqueueLetter } from "../jobs/queue.js";
 import { applicantUserIds, notifyUsers } from "../lib/notify.js";
+import { publishDecision, releaseHeld } from "../lib/decisions.js";
 import { sendViaSession, waWorkerOnline } from "../lib/messaging.js";
 import { normalisePhone } from "../lib/phone.js";
 import { ALL_LEVELS, MODES, TUITION_PERIODS, allowedLevels, isSchool, levelLabel, syllabiForLevel } from "../lib/levels.js";
@@ -154,7 +155,7 @@ institutions.get("/applications", h(async (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
   res.json(await prisma.application.findMany({
     where: { program: { institutionId: inst(req), ...(programId && { id: programId }) }, status: status ?? { in: [...VISIBLE] }, ...(q && { student: { fullName: { contains: q, mode: "insensitive" } } }) },
-    select: { id: true, status: true, createdAt: true, updatedAt: true, decidedAt: true, student: { select: { id: true, fullName: true, gender: true, dateOfBirth: true } }, program: { select: { id: true, title: true } } },
+    select: { id: true, status: true, createdAt: true, updatedAt: true, decidedAt: true, decisionPublishedAt: true, student: { select: { id: true, fullName: true, gender: true, dateOfBirth: true } }, program: { select: { id: true, title: true } } },
     orderBy: { updatedAt: "desc" }, take: 200,
   }));
 }));
@@ -190,7 +191,7 @@ institutions.post("/applications/:id/start-review", h(async (req, res) => {
   res.json({ updated: r.count });
 }));
 
-institutions.post("/applications/:id/decision", requireMfa, body(z.object({ decision: z.enum(["ACCEPTED", "REJECTED"]), note: z.string().max(1000).optional(), programId: z.string().uuid().optional() })), h(async (req, res) => {
+institutions.post("/applications/:id/decision", requireMfa, body(z.object({ decision: z.enum(["ACCEPTED", "REJECTED"]), note: z.string().max(1000).optional(), programId: z.string().uuid().optional(), letter: z.enum(["NOW", "HOLD"]).optional() })), h(async (req, res) => {
   const a = await prisma.application.findFirst({ where: { id: req.params.id, program: { institutionId: inst(req) }, status: { in: ["SUBMITTED", "UNDER_REVIEW"] } }, include: { choices: true } });
   if (!a) return res.status(404).json({ error: "not_found_or_already_decided" });
   // Accepting means offering ONE of the applicant's ranked choices (default: first choice).
@@ -208,8 +209,42 @@ institutions.post("/applications/:id/decision", requireMfa, body(z.object({ deci
   });
   if (!ok) return res.status(409).json({ error: "no_seats_left" });
   await audit(req, `application.${req.body.decision}`, "Application", a.id, offered ? { offeredProgramId: offered } : undefined);
-  await notifyUsers(await applicantUserIds(a.studentId), `APPLICATION_${req.body.decision}`, "", "", { applicationId: a.id });
-  await enqueueLetter(a.id); // PDF + WhatsApp/email delivery; a sweeper retries if the queue is down
+  // Send the letter now, or keep the decision private until the registrar releases all held letters together.
+  const letterMode = req.body.letter ?? ((await prisma.institution.findUniqueOrThrow({ where: { id: inst(req) }, select: { letterMode: true } })).letterMode === "HOLD" ? "HOLD" : "NOW");
+  const held = letterMode === "HOLD";
+  if (!held) await publishDecision(a.id);
+  else await audit(req, "application.letter_held", "Application", a.id);
+  res.json({ ok: true, held });
+}));
+
+// ---- Held decision letters: release together, schedule a date, or release one
+institutions.get("/letters/pending", h(async (req, res) => {
+  const [i, items] = await Promise.all([
+    prisma.institution.findUniqueOrThrow({ where: { id: inst(req) }, select: { letterMode: true, lettersReleaseAt: true } }),
+    prisma.application.findMany({ where: { program: { institutionId: inst(req) }, decidedAt: { not: null }, decisionPublishedAt: null, status: { in: ["ACCEPTED", "REJECTED"] } }, select: { id: true, status: true, decidedAt: true, student: { select: { fullName: true } }, program: { select: { title: true } } }, orderBy: { decidedAt: "asc" }, take: 500 }),
+  ]);
+  res.json({ mode: i.letterMode, releaseAt: i.lettersReleaseAt, accepted: items.filter((x) => x.status === "ACCEPTED").length, rejected: items.filter((x) => x.status === "REJECTED").length, items });
+}));
+
+institutions.put("/letters/settings", requireMfa, body(z.object({ mode: z.enum(["IMMEDIATE", "HOLD"]), releaseAt: z.string().datetime().nullable().optional() })), h(async (req, res) => {
+  const at = req.body.mode === "HOLD" && req.body.releaseAt ? new Date(req.body.releaseAt) : null;
+  if (at && at.getTime() < Date.now() - 60_000) return res.status(400).json({ error: "date_in_past" });
+  await prisma.institution.update({ where: { id: inst(req) }, data: { letterMode: req.body.mode, lettersReleaseAt: at } });
+  await audit(req, "letters.settings", "Institution", inst(req), { mode: req.body.mode, releaseAt: at?.toISOString() ?? null });
+  res.json({ ok: true });
+}));
+
+institutions.post("/letters/release", requireMfa, h(async (req, res) => {
+  const released = await releaseHeld(inst(req));
+  await prisma.institution.update({ where: { id: inst(req) }, data: { lettersReleaseAt: null } }); // the scheduled date (if any) is used up
+  await audit(req, "letters.release_all", "Institution", inst(req), { released });
+  res.json({ released });
+}));
+
+institutions.post("/applications/:id/release", requireMfa, h(async (req, res) => {
+  const a = await prisma.application.findFirst({ where: { id: req.params.id, program: { institutionId: inst(req) }, decidedAt: { not: null }, decisionPublishedAt: null } });
+  if (!a || !(await publishDecision(a.id))) return res.status(404).json({ error: "not_held" });
+  await audit(req, "application.letter_released", "Application", a.id);
   res.json({ ok: true });
 }));
 
@@ -247,7 +282,7 @@ institutions.post("/whatsapp/connect", requireMfa, body(z.object({ phone: z.stri
 }));
 
 institutions.post("/whatsapp/disconnect", requireMfa, h(async (req, res) => {
-  await prisma.whatsAppSession.updateMany({ where: { institutionId: inst(req) }, data: { desired: false } });
+  await prisma.whatsAppSession.updateMany({ where: { institutionId: inst(req) }, data: { desired: false, status: "DISCONNECTED", qr: null, pairingCode: null, pairPhone: null, lastError: null } }); // the page updates at once; the worker closes the browser
   await audit(req, "whatsapp.disconnect", "Institution", inst(req));
   res.status(202).json({ ok: true });
 }));

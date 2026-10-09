@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import { chromium } from "playwright-core";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../backend/package.json", import.meta.url));
@@ -303,18 +304,40 @@ try {
   await page.screenshot({ path: `${SHOTS}/institution-whatsapp.png`, fullPage: true });
   check("WhatsApp page shows the checklist (verified, two-step)", (await page.locator("main").innerText()).includes("Your institution is verified") && (await page.locator("main").innerText()).includes("Two-step security is on"));
   const running = await page.getByText("The WhatsApp service is running on the server").waitFor({ timeout: 12000 }).then(() => true, () => false);
+  const qrBtn = page.getByRole("button", { name: "Link with a QR code" });
+  const sql = (q) => execFileSync("psql", [process.env.DATABASE_URL, "-qc", q]);
   if (!running) {
-    check("service down: clear message and linking is disabled", (await page.locator("main").innerText()).includes("not running on the server") && await page.getByRole("button", { name: /Link WhatsApp/ }).isDisabled());
+    check("service down: clear message and linking is disabled", (await page.locator("main").innerText()).includes("not running on the server") && await qrBtn.isDisabled());
+    // No real WhatsApp service here: play the part of the worker through the database and check what the page does with it.
+    sql(`INSERT INTO "Setting"(key, value, "updatedAt") VALUES ('wa.heartbeat', now()::text, now()) ON CONFLICT (key) DO UPDATE SET value = now()::text`);
+    sql(`UPDATE "Setting" SET value = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') WHERE key = 'wa.heartbeat'`);
+    await page.reload(); await page.waitForSelector("text=The WhatsApp service is running on the server");
+    await page.getByRole("button", { name: "Link with a QR code" }).click();
+    await page.waitForSelector(".badge:has-text('Starting')");
+    check("clicking the QR button starts linking and says what to expect", (await page.locator("main").innerText()).includes("A QR code will appear here"));
+    sql(`UPDATE "WhatsAppSession" SET status='QR', qr='2@e2e-test-qr-payload,abc,def', "lastError"=NULL`);
+    await page.waitForSelector("[data-testid=qr-image]", { timeout: 10000 });
+    check("QR code image is displayed when the worker publishes one", await page.locator("[data-testid=qr-image]").evaluate((i) => i.complete && i.naturalWidth > 100));
+    await page.screenshot({ path: `${SHOTS}/institution-whatsapp-qr.png`, fullPage: true });
+    sql(`UPDATE "WhatsAppSession" SET status='CODE', qr=NULL, "pairingCode"='ABCD-EFGH'`);
+    await page.waitForSelector("[data-testid=pairing-code]", { timeout: 10000 });
+    check("8-character pairing code is displayed", (await page.getByTestId("pairing-code").innerText()).trim() === "ABCD-EFGH");
+    sql(`UPDATE "WhatsAppSession" SET status='CONNECTED', "pairingCode"=NULL, qr=NULL, phone='+265999123456'`);
+    await page.waitForSelector("text=Linked number: +265999123456", { timeout: 10000 });
+    check("linked state shows the number and the test-message form", (await page.getByRole("button", { name: "Send test" }).count()) > 0);
+    await page.getByRole("button", { name: "Unlink" }).click();
+    await page.waitForSelector(".badge:has-text('Not linked')", { timeout: 8000 });
+    check("Unlink resets the page immediately", (await page.getByRole("button", { name: "Link with a QR code" }).count()) === 1);
   } else {
-    // link by phone-number code (the QR way is the other tab). Without internet the server cannot reach WhatsApp: the page must say so plainly.
-    await page.getByRole("button", { name: "Use a phone-number code" }).click();
-    await page.locator('input[type=tel]').fill("0999 123 456");
-    await page.getByRole("button", { name: "Get code" }).click();
-    await page.waitForSelector(".badge:has-text('Starting'), .badge:has-text('Enter the code'), .badge:has-text('Problem'), .badge:has-text('Scan the code')", { timeout: 15000 });
-    await page.waitForSelector("[data-testid=pairing-code], .msg.err", { timeout: 60000 });
+    // A REAL WhatsApp service is running: the QR button must start it. Without internet the server cannot reach WhatsApp and the page must say so plainly.
+    await qrBtn.click();
+    await page.waitForSelector(".badge:has-text('Starting'), .badge:has-text('Problem'), .badge:has-text('Scan the code')", { timeout: 15000 });
+    await page.waitForSelector("[data-testid=qr-image], .msg.err", { timeout: 60000 });
     const body = await page.locator("main").innerText();
-    check("WhatsApp: pairing code shown, or a readable reason when WhatsApp is unreachable", /Enter the code|cannot reach WhatsApp|Chrome or Chromium/.test(body) || (await page.locator("[data-testid=pairing-code]").count()) > 0, body.replace(/\n/g, " ").slice(0, 160));
+    check("real service: QR button starts linking; result is a QR or a readable reason", /cannot reach WhatsApp|Chrome or Chromium/.test(body) || (await page.locator("[data-testid=qr-image]").count()) > 0, body.replace(/\n/g, " ").slice(-200));
   }
+  await page.click('nav.side a[href="/app/institution/letters"]'); await page.waitForSelector("text=Sending decision letters");
+  check("letters page offers: send immediately, or hold and release together", (await page.locator("main").innerText()).includes("Hold the letters and send them all together") && (await page.locator("main").innerText()).includes("No letters are waiting."));
   await page.click('nav.side a[href="/app/institution/programs"]'); await page.waitForSelector("text=1 of 30 seats taken");
   check("programme shows seat taken", true);
   check("programme list shows tuition", (await page.locator("main").innerText()).includes("MK 800,000 per semester"));

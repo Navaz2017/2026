@@ -20,7 +20,7 @@ export default function Applications() {
         <Card key={a.id}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div><strong>{a.student.fullName}</strong><div className="muted">{a.program.title} · {t("inst.received")} {dt(a.updatedAt)}</div></div>
-            <div className="row"><Badge ns="st.app" value={a.status} /><Link className="btn primary" href={`/app/institution/applications/${a.id}`}>{t("inst.open")}</Link></div>
+            <div className="row"><Badge ns="st.app" value={a.status} />{a.decidedAt && !a.decisionPublishedAt && <span className="badge neutral">{t("lh.onHold")}</span>}<Link className="btn primary" href={`/app/institution/applications/${a.id}`}>{t("inst.open")}</Link></div>
           </div>
         </Card>
       ))}

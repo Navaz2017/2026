@@ -89,3 +89,12 @@ test("a number that is not on WhatsApp is reported, not retried forever", { skip
     assert.equal(r.status, 502); assert.equal((await json(r)).error, "not_on_whatsapp");
   } finally { clearInterval(timer); }
 });
+
+test("Cancel / Unlink resets the state at once and leaves no pairing secrets behind", { skip }, async () => {
+  const a = await school();
+  await call("POST", "/institution/whatsapp/connect", a.token, { phone: "0999 123 456" });
+  await prisma.whatsAppSession.update({ where: { institutionId: a.inst.id }, data: { status: "CODE", pairingCode: "ABCD-1234", qr: "x" } });
+  assert.equal((await call("POST", "/institution/whatsapp/disconnect", a.token)).status, 202);
+  const st = await json(await call("GET", "/institution/whatsapp", a.token));
+  assert.deepEqual([st.desired, st.status, st.qr, st.pairingCode, st.pairPhone], [false, "DISCONNECTED", null, null, null]);
+});

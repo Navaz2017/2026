@@ -17,7 +17,7 @@ export function classifyWaError(message: string, env: { platform: string; osRele
   const bigSur = env.platform === "darwin" && /^20\./.test(env.osRelease); // macOS 11 = Darwin 20
   if (/ERR_(TUNNEL|INTERNET|NAME_NOT_RESOLVED|CONNECTION|PROXY|TIMED_OUT|ADDRESS)/i.test(m)) return `wa_err:network:${detail}`;
   if (/Could not find|no such file|ENOENT|not found at|executable.*(doesn't|does not) exist/i.test(m)) return `wa_err:no_chrome:${detail}`;
-  if (bigSur && /Failed to launch|dyld|Symbol not found|Library not loaded|Target closed|Protocol error|exited|ENOEXEC|Bad CPU/i.test(m)) return `wa_err:mac11:${detail}`;
+  if (bigSur && /Failed to launch|dyld|Symbol not found|Library not loaded|ENOEXEC|Bad CPU|browser process exited/i.test(m)) return `wa_err:mac11:${detail}`;
   if (/Failed to launch|error while loading shared libraries|libnss|libgbm|cannot open shared object/i.test(m)) return `wa_err:chrome_start:${detail}`;
   return m.slice(0, 200);
 }

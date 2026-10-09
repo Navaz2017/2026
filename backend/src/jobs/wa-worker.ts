@@ -25,6 +25,7 @@ const log = (key: string, ...a: unknown[]) => console.log(`[wa ${new Date().toIS
 const clients = new Map<string, import("whatsapp-web.js").Client>();
 const pairModes = new Map<string, string>(); // key -> phone used for code pairing ("" = QR); a change restarts the pairing
 const starting = new Set<string>();
+const stopping = new Set<string>(); // sessions WE are shutting down (admin pressed Cancel/Unlink): their errors are expected, not failures
 const setState = (key: string, data: Record<string, unknown>) =>
   (key === PLATFORM
     ? prisma.platformWhatsApp.upsert({ where: { id: PLATFORM }, update: data, create: { id: PLATFORM, ...data } })
@@ -55,20 +56,33 @@ async function start(id: string, pairPhone = "") {
   try { await c.initialize(); }
   catch (e) {
     const msg = (e as Error).message;
-    log(id, "FAILED to start:", msg);              // full reason in the terminal
-    await teardown(id, false);
-    setState(id, { status: "FAILED", qr: null, pairingCode: null, lastError: classifyWaError(msg, env) });
+    if (stopping.has(id) || clients.get(id) !== c) log(id, "start cancelled by the admin");   // Cancel pressed while Chrome was loading: not an error
+    else {
+      log(id, "FAILED to start:", msg);              // full reason in the terminal
+      await teardown(id, false);
+      setState(id, { status: "FAILED", qr: null, pairingCode: null, lastError: classifyWaError(msg, env) });
+    }
   }
   starting.delete(id);
+}
+
+// Closing a browser that is still loading can hang forever: give it a few seconds, then kill the process.
+async function destroyClient(c: import("whatsapp-web.js").Client) {
+  await Promise.race([c.destroy().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+  try { (c as any).pupBrowser?.process()?.kill("SIGKILL"); } catch { /* already gone */ }
 }
 
 async function teardown(id: string, logout: boolean) {
   const c = clients.get(id);
   clients.delete(id); pairModes.delete(id);
   if (!c) return;
-  if (logout) await c.logout().catch(() => {}); // unlinks the device from the phone
-  await c.destroy().catch(() => {});
-  if (logout) await fs.rm(waSessionDir(config.WA_DATA_DIR, id), { recursive: true, force: true }).catch(() => {}); // only THIS institution's folder
+  stopping.add(id);
+  try {
+    // Only a fully linked session can log out (that unlinks the device from the phone); one that is still loading is just closed.
+    if (logout && c.info) await Promise.race([c.logout().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+    await destroyClient(c);
+    if (logout) await fs.rm(waSessionDir(config.WA_DATA_DIR, id), { recursive: true, force: true }).catch(() => {}); // only THIS institution's folder
+  } finally { starting.delete(id); stopping.delete(id); }
 }
 
 // Reconcile DB intent with reality every 5 s (also restores sessions after a restart).
@@ -85,7 +99,8 @@ async function reconcile() {
     if (!r.desired && clients.has(r.key)) { await teardown(r.key, true); await setState(r.key, { status: "DISCONNECTED", qr: null, pairingCode: null, pairPhone: null, phone: null }); }
   }
 }
-setInterval(() => reconcile().catch((e) => console.error("reconcile", e)), 5000);
+let reconciling = false;
+setInterval(() => { if (reconciling) return; reconciling = true; reconcile().catch((e) => console.error("reconcile", e)).finally(() => { reconciling = false; }); }, 5000);
 
 // The dashboards use this to say "the WhatsApp service is not running" instead of waiting forever on "Starting".
 const beat = () => prisma.setting.upsert({ where: { key: "wa.heartbeat" }, update: { value: new Date().toISOString() }, create: { key: "wa.heartbeat", value: new Date().toISOString() } }).catch(() => {});

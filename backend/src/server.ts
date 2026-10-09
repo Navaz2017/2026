@@ -4,6 +4,7 @@ import { app } from "./app.js";
 import { config } from "./config.js";
 import { prisma } from "./db.js";
 import { attachRealtime } from "./realtime.js";
+import { runLetterScheduler } from "./lib/decisions.js";
 
 // A database that is behind the code ("column ... does not exist") shows up as a bare 500 in the browser.
 // Say so clearly at startup instead.
@@ -22,3 +23,6 @@ async function checkMigrations() {
 const server = app.listen(config.PORT, () => { console.log(`api listening on :${config.PORT}`); void checkMigrations(); });
 const live = attachRealtime(server); // WebSocket at /v1/realtime
 process.on("SIGTERM", () => { void live.close().then(() => process.exit(0)); });
+
+// Scheduled release of held decision letters (atomic claim: safe with several API processes)
+setInterval(() => runLetterScheduler().then((n) => n && console.log(`released ${n} held letters`), (e) => console.error("letter scheduler", e)), 60_000);

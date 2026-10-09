@@ -26,4 +26,6 @@ test("launch failures are explained: network, missing Chrome, Big Sur incompatib
   assert.match(classifyWaError("Failed to launch the browser process! dyld: Symbol not found: _SecTrustCopyCertificateChain", bigSur), /^wa_err:mac11:/);
   assert.match(classifyWaError("Failed to launch the browser process! error while loading shared libraries: libnss3.so", linux), /^wa_err:chrome_start:/);
   assert.equal(classifyWaError("something unexpected", linux), "something unexpected");
+  // Chrome closed while it was loading (e.g. the admin pressed Cancel) is not a Big Sur incompatibility
+  assert.doesNotMatch(classifyWaError("Protocol error (Runtime.callFunctionOn): Target closed", bigSur), /mac11/);
 });

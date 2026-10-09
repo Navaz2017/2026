@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate, requireRole, requireVerifiedPhone } from "../middleware/auth.js";
+import { maskHeld } from "../lib/decisions.js";
 import { body, h } from "../middleware/validate.js";
 import { presignDownload, presignUpload } from "../lib/storage.js";
 import { canActForStudent } from "../lib/access.js";
@@ -104,7 +105,7 @@ family.get("/applications/:id", h(async (req, res) => {
   const a = await myDraft(req, req.params.id!);
   if (!a) return res.status(404).json({ error: "not_found" });
   const student = await prisma.student.findUniqueOrThrow({ where: { id: a.studentId }, include: { parent: { select: { occupation: true, employer: true, user: { select: { fullName: true, phone: true, email: true } } } } } });
-  const { institution: i, choices, ...app } = a;
+  const { institution: i, choices, ...app } = maskHeld(a as any) as typeof a;
   res.json({ ...app, institution: { id: i.id, name: i.name, type: i.type, campuses: i.campuses, highestLevel: i.highestLevel, syllabi: i.syllabi },
     choices: choices.map((c) => ({ rank: c.rank, program: { id: c.program.id, title: c.program.title, level: c.program.level, classLevel: c.program.classLevel, syllabus: c.program.syllabus, modes: c.program.modes, tuitionFeeMinor: c.program.tuitionFeeMinor, tuitionPeriod: c.program.tuitionPeriod, duration: c.program.duration, applicationFee: c.program.applicationFee } })),
     student: { id: student.id, fullName: student.fullName, dateOfBirth: student.dateOfBirth, profile: student.profile, parent: student.parent },
@@ -231,18 +232,18 @@ family.post("/applications/:id/payment", requireVerifiedPhone, body(z.object({
 const mine = (req: any) => (req.user.role === "PARENT" ? { parent: { userId: req.user.sub } } : { userId: req.user.sub });
 
 family.get("/applications", h(async (req, res) => {
-  res.json(await prisma.application.findMany({
+  res.json((await prisma.application.findMany({
     where: { student: mine(req) },
-    select: { id: true, status: true, totalDueMinor: true, feeMinor: true, studentServiceFeeMinor: true, decisionNote: true, createdAt: true, updatedAt: true,
+    select: { id: true, status: true, totalDueMinor: true, feeMinor: true, studentServiceFeeMinor: true, decisionNote: true, decidedAt: true, decisionPublishedAt: true, createdAt: true, updatedAt: true,
       student: { select: { id: true, fullName: true } }, program: { select: { id: true, title: true, institution: { select: { name: true } } } },
       payments: { select: { provider: true, reference: true, status: true }, orderBy: { createdAt: "desc" }, take: 1 }, letter: { select: { id: true } } },
     orderBy: { updatedAt: "desc" }, take: 100,
-  }));
+  })).map(maskHeld)); // a decision the school is still holding is invisible to the applicant
 }));
 
 family.get("/applications/:id/letter", h(async (req, res) => {
   const a = await prisma.application.findFirst({ where: { id: req.params.id, student: mine(req) }, include: { letter: true } });
-  if (!a?.letter) return res.status(404).json({ error: "not_found" });
+  if (!a?.letter || (a.decidedAt && !a.decisionPublishedAt)) return res.status(404).json({ error: "not_found" });
   res.json({ url: await presignDownload(a.letter.storageKey, 120) });
 }));
 

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
+import { maskHeld } from "../lib/decisions.js";
 import { h } from "../middleware/validate.js";
 
 export const sync = Router();
@@ -31,7 +32,7 @@ sync.get("/pull", h(async (req, res) => {
   if (u.role === "PARENT" || u.role === "STUDENT") {
     const mine = u.role === "PARENT" ? { parent: { userId: u.sub } } : { userId: u.sub };
     out.children = await prisma.student.findMany({ ...page, where: { ...mine, updatedAt: { gt: since("children") } } });
-    out.applications = await prisma.application.findMany({ ...page, where: { student: mine, updatedAt: { gt: since("applications") } } });
+    out.applications = (await prisma.application.findMany({ ...page, where: { student: mine, updatedAt: { gt: since("applications") } } })).map(maskHeld);
     out.credentials = await prisma.credential.findMany({ ...page, where: { student: mine, updatedAt: { gt: since("credentials") } }, select: { id: true, studentId: true, kind: true, title: true, mime: true, updatedAt: true } });
   } else if (u.role === "INSTITUTION_ADMIN") {
     out.applications = await prisma.application.findMany({ ...page, where: { program: { institutionId: u.inst }, status: { notIn: ["DRAFT", "AWAITING_PAYMENT", "PAYMENT_SUBMITTED"] }, updatedAt: { gt: since("applications") } } });

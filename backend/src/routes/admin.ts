@@ -293,7 +293,7 @@ admin.post("/messaging/whatsapp/connect", body(z.object({ phone: z.string().min(
   res.status(202).json({ ok: true });
 }));
 admin.post("/messaging/whatsapp/disconnect", h(async (req, res) => {
-  await prisma.platformWhatsApp.updateMany({ where: { id: "platform" }, data: { desired: false } });
+  await prisma.platformWhatsApp.updateMany({ where: { id: "platform" }, data: { desired: false, status: "DISCONNECTED", qr: null, pairingCode: null, pairPhone: null, lastError: null } });
   await audit(req, "platform_whatsapp.disconnect", "Setting", "platform");
   res.status(202).json({ ok: true });
 }));
