@@ -11,6 +11,7 @@ import { sms } from "./routes/sms.js";
 import { sync } from "./routes/sync.js";
 import { admin } from "./routes/admin.js";
 import { publicCatalog } from "./routes/public.js";
+import { rememberOrigin } from "./lib/storage.js";
 import { files } from "./routes/files.js";
 import { school } from "./routes/school.js";
 import { schoolFamily } from "./routes/schoolFamily.js";
@@ -20,6 +21,7 @@ export const app = express();
 app.set("trust proxy", 1); // behind the load balancer; req.ip is then the real client for rate limits and audit
 app.disable("x-powered-by");
 app.use(helmet());
+app.use(rememberOrigin);
 app.use(cors({ origin: config.CORS_ORIGINS.split(","), credentials: true }));
 // Keep the raw bytes: the SMS ingest endpoint verifies an HMAC over them.
 app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => { (req as any).rawBody = buf.toString("utf8"); } }));

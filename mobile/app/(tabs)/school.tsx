@@ -3,12 +3,14 @@ import { Text, View } from "react-native";
 import { post } from "../../src/api";
 import { useT } from "../../src/i18n";
 import { useResource } from "../../src/offline";
-import { Btn, C, Card, Empty, H2, Loading, P, Screen, Select, dt } from "../../src/ui";
+import { useSession } from "../../src/session";
+import { Btn, C, Card, Empty, H2, Loading, Msg, P, Screen, Select, dt } from "../../src/ui";
 
 const TABS = ["progress", "attendance", "notices"] as const;
 
 export default function School() {
   const { t } = useT();
+  const { user } = useSession();
   const kids = useResource<any[]>("/me/school/children");
   const [sel, setSel] = useState("");
   const [tab, setTab] = useState<(typeof TABS)[number]>("progress");
@@ -19,8 +21,8 @@ export default function School() {
   const data = d.data;
   return (
     <Screen>
-      <Loading error={kids.error} loading={kids.loading && !kids.data} />
-      {kids.data && options.length === 0 && <><Empty /><P muted>{t("sh.notLinked")}</P></>}
+      <Loading error={kids.data ? null : kids.error} loading={kids.loading && !kids.data} />
+      {(kids.data ? options.length === 0 : !!kids.error) && <Msg kind="info">{user?.role === "PARENT" ? t("sh.notLinked") : t("sh.notLinkedStudent")}</Msg>}
       {options.length > 0 && <>
         <Select label={t("nav.mySchool")} value={sel} onChange={setSel} options={options} />
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>

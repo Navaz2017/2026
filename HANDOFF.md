@@ -77,4 +77,6 @@ Remaining, in priority order:
 4. Phase 3: paid tutoring subscription for parents (monthly, schools pay nothing; manual 30-day mobile-money payment matched by the SMS reader like admissions payments), teacher data bundles (check Africa's Talking airtime support for Malawi), fees tracking, report-card PDFs, primary grading scales (percentage only today), xlsx import.
 5. Still open from before: native-speaker review of Chichewa/Tumbuka, real-phone tests (SMS forwarder, WhatsApp, native date picker), 70k-user load test, independent security test, CI, Malawi data-protection review for children's records.
 
+Upload fix (latest): signed upload/download links for the local storage driver now use the origin the client called (`rememberOrigin` in `lib/storage.ts`), not `PUBLIC_API_URL` - phones/LAN devices could not reach `localhost` links. PUT also checks magic bytes. If uploads still fail behind nginx, raise `client_max_body_size` (default 1 MB).
+
 Gotchas: after pulling, run `npx prisma generate && npx prisma migrate deploy` in `backend/` (stale client gives "Unknown argument"). In a fresh sandbox start Postgres (`pg_ctlcluster 16 main start`), create role/db, and export `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` before `npm run test:int`.

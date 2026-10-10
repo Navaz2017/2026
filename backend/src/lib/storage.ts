@@ -1,4 +1,6 @@
 import crypto, { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { RequestHandler } from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
@@ -14,6 +16,12 @@ const ALLOWED: Record<string, number> = {
   "image/png": 12_000_000,
   "video/mp4": 200_000_000,
 };
+
+// Links for the local driver must point at the address the CALLER used to reach the API (a phone on the LAN cannot reach "localhost"),
+// so the request's own origin wins; PUBLIC_API_URL is only the fallback for background jobs.
+const origin = new AsyncLocalStorage<string>();
+export const rememberOrigin: RequestHandler = (req, _res, next) => origin.run(`${req.protocol}://${req.get("host")}`, next);
+const apiBase = () => origin.getStore() ?? config.PUBLIC_API_URL;
 
 // ---- local driver: HMAC-signed, expiring URLs served by routes/files.ts (dev & tests only) ----
 const sign = (payload: object) => {
@@ -50,14 +58,14 @@ export async function presignUpload(prefix: string, mime: string, size: number) 
   if (!max) throw new HttpError(400, "file_type_not_allowed");
   if (size > max) throw new HttpError(400, "file_too_large");
   const key = `${prefix}/${randomUUID()}`;
-  if (local) return { key, url: `${config.PUBLIC_API_URL}/v1/files/put/${sign({ op: "put", key, mime, size, exp: Date.now() + 300_000 })}`, headers: { "Content-Type": mime } };
+  if (local) return { key, url: `${apiBase()}/v1/files/put/${sign({ op: "put", key, mime, size, exp: Date.now() + 300_000 })}`, headers: { "Content-Type": mime } };
   const { s3, S3, sign: signUrl } = await aws();
   const url = await signUrl(s3, new S3.PutObjectCommand({ Bucket: config.S3_BUCKET, Key: key, ContentType: mime, ContentLength: size }), { expiresIn: 300 });
   return { key, url, headers: { "Content-Type": mime } };
 }
 
 export async function presignDownload(key: string, seconds = 120) {
-  if (local) return `${config.PUBLIC_API_URL}/v1/files/get/${sign({ op: "get", key, exp: Date.now() + seconds * 1000 })}`;
+  if (local) return `${apiBase()}/v1/files/get/${sign({ op: "get", key, exp: Date.now() + seconds * 1000 })}`;
   const { s3, S3, sign: signUrl } = await aws();
   return signUrl(s3, new S3.GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }), { expiresIn: seconds });
 }

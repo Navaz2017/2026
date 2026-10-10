@@ -234,6 +234,19 @@ test("uploads: a too-big photo or an unsupported type gets a clear 400 (not a ba
   assert.equal((await slot("application/pdf", 5_000_000)).status, 200);
 });
 
+test("uploads: links follow the address the client used (a phone cannot reach 'localhost'); the bytes must match the label", { skip }, async () => {
+  const a = await applicant();
+  const pdf = Buffer.from("%PDF-1.4 test");
+  const s1 = await json(await call("POST", `/me/students/${a.studentId}/credentials/upload-url`, a.token, { mime: "application/pdf", size: pdf.length }));
+  const origin = new URL(s1.url).origin;
+  const put = (url: string, body: Buffer, mime: string) => fetch(url, { method: "PUT", headers: { "Content-Type": mime }, body: new Uint8Array(body) });
+  assert.equal((await put(s1.url, pdf, "application/pdf; charset=binary")).status, 200, "a content-type with extras is accepted");
+  const fake = Buffer.from("not a pdf at all");
+  const s2 = await json(await call("POST", `/me/students/${a.studentId}/credentials/upload-url`, a.token, { mime: "application/pdf", size: fake.length }));
+  assert.equal(new URL(s2.url).origin, origin);
+  const r = await put(s2.url, fake, "application/pdf"); assert.equal(r.status, 400); assert.equal((await r.json() as any).error, "file_type_not_allowed");
+});
+
 test("a parent applying for a child is the guardian: the guardian phone is the parent's account phone", { skip }, async () => {
   const u = await uni([{ title: "BSc", fee: 1_000_000 }]);
   const i = ++n;

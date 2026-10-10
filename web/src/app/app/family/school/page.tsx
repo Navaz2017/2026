@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import { post } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { Card, Empty, Loading, Page, dt, useLoad } from "@/lib/ui";
+import { useSession } from "@/lib/session";
+import { Card, Empty, Loading, Msg, Page, dt, useLoad } from "@/lib/ui";
 
 export default function FamilySchool() {
   const { t } = useT();
+  const { user } = useSession();
   const kids = useLoad<any[]>("/me/school/children");
   const [sel, setSel] = useState<{ sid: string; inst: string } | null>(null);
   const [tab, setTab] = useState<"progress" | "attendance" | "notices">("progress");
@@ -16,8 +18,8 @@ export default function FamilySchool() {
   const d = useLoad<any>(path, [tab, sel?.sid, sel?.inst]);
   return (
     <Page title={t("nav.mySchool")}>
-      <Loading error={kids.error} loading={kids.loading} />
-      {kids.data && options.length === 0 && <><Empty /><p className="muted">{t("sh.notLinked")}</p></>}
+      <Loading error={kids.data ? null : kids.error} loading={kids.loading} />
+      {(kids.data ? options.length === 0 : !!kids.error) && <Msg kind="info">{user?.role === "PARENT" ? t("sh.notLinked") : t("sh.notLinkedStudent")}</Msg>}
       {options.length > 0 && <>
         <select value={sel ? `${sel.sid}|${sel.inst}` : ""} onChange={(e) => { const [sid, inst] = e.target.value.split("|"); setSel({ sid: sid!, inst: inst! }); }}>
           {options.map((o) => <option key={o.sid + o.inst} value={`${o.sid}|${o.inst}`}>{o.label}</option>)}
