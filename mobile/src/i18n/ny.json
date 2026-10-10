@@ -505,6 +505,7 @@
  "notif.GRADES_RECEIVED": "Sukulu yanu yakale yakweza zotsatira zanu.",
  "notif.PAYMENT_CONFIRMED": "Malipiro anu atsimikizika. Zopempha zanu zapita ku sukulu.",
  "notif.PAYMENT_REJECTED": "Malipiro anu sanatsimikizike. Chonde onani nambala yotsimikizira ndi kuyesanso.",
+ "notif.PAYMENT_SUBMITTED": "Talandira zambiri za malipiro anu ndipo tikuyang’ana malipirowo.",
  "notif.PAYMENT_UNDERPAID": "Ndalama zomwe talandira ndi zochepa kuposa zofunika. Chonde lumikizanani nafe.",
  "notif.RESULTS_PUBLISHED": "Zotsatira zatsopano za {subject} za {name}: {title}.",
  "oq.BACHELORS": "Digiri yoyamba",

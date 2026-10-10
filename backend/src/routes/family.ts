@@ -1,3 +1,4 @@
+import { applicantUserIds, notifyUsers } from "../lib/notify.js";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -237,6 +238,7 @@ family.post("/applications/:id/submit", requireVerifiedPhone, h(async (req, res)
     if (from && !(await prisma.gradeRequest.count({ where: { studentId: a.studentId, fromSchoolId: from.id, status: { in: ["PENDING", "FULFILLED"] } } })))
       await prisma.gradeRequest.create({ data: { studentId: a.studentId, fromSchoolId: from.id, toSchoolId: inst.id } });
   }
+  await notifyUsers(await applicantUserIds(a.studentId), "PAYMENT_SUBMITTED", "", "", { applicationId: a.id }); // "we are checking your payment"
   await reconcile(form.payment.provider, [reference]); // instant confirm if the SMS already arrived
   res.json(await prisma.application.findUniqueOrThrow({ where: { id: a.id } }));
 }));
@@ -259,6 +261,7 @@ family.post("/applications/:id/payment", requireVerifiedPhone, body(z.object({
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return res.status(409).json({ error: "reference_already_used" });
     throw e;
   }
+  await notifyUsers(await applicantUserIds(app.studentId), "PAYMENT_SUBMITTED", "", "", { applicationId: app.id });
   await reconcile(req.body.provider, [reference]); // instant confirm if the SMS already arrived
   res.status(202).json({ status: "PAYMENT_SUBMITTED", message: "Payment received for verification. You will receive a confirmation once your payment is confirmed." });
 }));

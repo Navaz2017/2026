@@ -505,6 +505,7 @@
  "notif.GRADES_RECEIVED": "Sukulu yinu yakale yawezga vyakusambira vyinu.",
  "notif.PAYMENT_CONFIRMED": "Malipiro ghinu ghatondeka. Kupempha kwinu kwalutiya ku sukulu.",
  "notif.PAYMENT_REJECTED": "Malipiro ghinu ghatondeka yayi. Wonani nambala yakutondeska kasi yeseskani kaciŵiri.",
+ "notif.PAYMENT_SUBMITTED": "Tazomera vya malipiro ghinu, tikulenga malipiro.",
  "notif.PAYMENT_UNDERPAID": "Ndalama izo tilandira ni zichoko kuluska izo zikukhumbika. Phatikanani nase.",
  "notif.RESULTS_PUBLISHED": "Vyakufumapo vyasono vya {subject} vya {name}: {title}.",
  "oq.BACHELORS": "Digiri yakwamba",

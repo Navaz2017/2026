@@ -19,7 +19,7 @@ ops/        systemd units, nginx, backup scripts, env templates
 
 ## Run (dev)
 ```bash
-cd backend && cp .env.example .env && npm i && npm run dev:all   # API + WhatsApp worker; runs prisma generate + migrate deploy first
+cd backend && cp .env.example .env && npm i && npm run dev:all   # API + WhatsApp worker + letter worker; runs prisma generate + migrate deploy first
 npx tsx --env-file=.env scripts/dev-seed.ts                      # demo data. Password for all: Passw0rd-demo1
 cd web && npm i && npm run dev          # http://localhost:3000
 cd mobile && npm i && npx expo start    # API address found automatically; or mobile/.env EXPO_PUBLIC_API_URL
@@ -80,5 +80,7 @@ Remaining, in priority order:
 Upload fix (latest): signed upload/download links for the local storage driver now use the origin the client called (`rememberOrigin` in `lib/storage.ts`), not `PUBLIC_API_URL` - phones/LAN devices could not reach `localhost` links. PUT also checks magic bytes. If uploads still fail behind nginx, raise `client_max_body_size` (default 1 MB).
 
 Product decisions (latest): NO school-fee payments in the model for now. Payment instructions say "Cash out to" + agent code + agent name (owner sets them on Revenue; number only as fallback). Upload failures now name the step (`StageError`: web `lib/api.ts`, mobile `src/diag.ts`), log to the console and POST `/v1/me/diag` -> server log line `[client-diag]`; server also logs `[upload]` refusals.
+
+Letters: decision letters no longer need Redis. `jobs/worker.ts` polls the database every 3 s for announced decisions without a letter (`lib/letterJob.ts`); `dev:all` / `start:all` start it. Before this, `dev:all` did not run the letter worker, so no letter was ever created. Applicants are notified (in-app + realtime) on: payment submitted, payment confirmed/rejected/underpaid, accepted/rejected (when announced; with letter mode HOLD only on release).
 
 Gotchas: after pulling, run `npx prisma generate && npx prisma migrate deploy` in `backend/` (stale client gives "Unknown argument"). In a fresh sandbox start Postgres (`pg_ctlcluster 16 main start`), create role/db, and export `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` before `npm run test:int`.

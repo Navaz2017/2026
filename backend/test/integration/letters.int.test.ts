@@ -6,6 +6,7 @@ import { prisma } from "../../src/db.js";
 import { app } from "../../src/app.js";
 import { signAccess } from "../../src/middleware/auth.js";
 import { runLetterScheduler } from "../../src/lib/decisions.js";
+import { sweepLetters } from "../../src/jobs/worker.js";
 import { submitApplication } from "./helpers.js";
 
 const skip = !process.env.INTEGRATION;
@@ -111,4 +112,14 @@ test("schedule one release date for all held letters; other institutions are unt
   await call("PUT", "/institution/letters/settings", b.token, { mode: "IMMEDIATE", releaseAt: when });
   const bs = await prisma.institution.findUniqueOrThrow({ where: { id: b.inst.id } });
   assert.deepEqual([bs.letterMode, bs.lettersReleaseAt], ["IMMEDIATE", null]);
+});
+
+test("no Redis needed: the letter worker creates the letter for an announced decision; submitting a payment notifies the applicant", { skip }, async () => {
+  const s = await school(), ap = await applicant(s);
+  assert.equal(await prisma.notification.count({ where: { userId: ap.userId, type: "PAYMENT_SUBMITTED" } }), 1, "the applicant is told their payment is being checked");
+  await call("POST", `/institution/applications/${ap.id}/decision`, s.token, { decision: "ACCEPTED" });
+  assert.equal(await prisma.letter.count({ where: { applicationId: ap.id } }), 0);
+  await sweepLetters();
+  assert.equal(await prisma.letter.count({ where: { applicationId: ap.id } }), 1);
+  assert.ok((await mine(ap)).letter, "the applicant can now download the letter");
 });

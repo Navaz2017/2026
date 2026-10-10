@@ -505,6 +505,7 @@
  "notif.GRADES_RECEIVED": "Your grades have been uploaded by your previous school.",
  "notif.PAYMENT_CONFIRMED": "Your payment is confirmed. Your application has gone to the school.",
  "notif.PAYMENT_REJECTED": "Your payment could not be confirmed. Please check the reference and try again.",
+ "notif.PAYMENT_SUBMITTED": "We received your payment details and are checking the payment.",
  "notif.PAYMENT_UNDERPAID": "The amount received is less than the amount due. Please contact support.",
  "notif.RESULTS_PUBLISHED": "New {subject} result for {name}: {title}.",
  "oq.BACHELORS": "Bachelors",

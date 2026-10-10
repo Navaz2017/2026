@@ -20,8 +20,8 @@
     "create-owner": "tsx --env-file=.env scripts/create-owner.ts",
     "reset-mfa": "tsx --env-file=.env scripts/reset-mfa.ts",
     "wa:check": "tsx --env-file=.env scripts/wa-check.ts",
-    "dev:all": "concurrently -k -n api,whatsapp -c blue,green \"tsx watch --env-file=.env src/server.ts\" \"npm run dev:wa\"",
-    "start:all": "concurrently -k -n api,whatsapp \"npm start\" \"npm run wa-worker\"",
+    "dev:all": "concurrently -k -n api,whatsapp,letters -c blue,green,magenta \"tsx watch --env-file=.env src/server.ts\" \"npm run dev:wa\" \"npm run dev:worker\"",
+    "start:all": "concurrently -k -n api,whatsapp,letters \"npm start\" \"npm run wa-worker\" \"npm run worker\"",
     "prepare:db": "prisma generate && prisma migrate deploy",
     "predev": "npm run prepare:db",
     "predev:all": "npm run prepare:db"
