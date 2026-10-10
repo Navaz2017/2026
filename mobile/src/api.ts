@@ -1,6 +1,7 @@
 import { API } from "./config";
 import { secret } from "./kv";
-import { stage } from "./diag";
+import { setDiagReporter, stage } from "./diag";
+import { File as PhoneFile } from "expo-file-system";
 import { markOffline, markOnline } from "./net";
 
 export class ApiError extends Error {
@@ -73,17 +74,22 @@ export async function logoutRemote() {
   if (rt) await timed(`${API}/v1/auth/logout`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: rt }) }, 5000).catch(() => {});
 }
 
+// fetch() cannot open some Android file:// paths (names with %, spaces or non-ASCII give a 404), so read through the file system module.
+async function readPicked(uri: string): Promise<ArrayBuffer> {
+  try { return await new PhoneFile(uri).arrayBuffer(); }
+  catch (first) {
+    try { const r = await fetch(uri); if (r.ok || r.status === 0) return await r.arrayBuffer(); } catch { /* fall through */ }
+    throw first;
+  }
+}
+
 export interface Picked { uri: string; name: string; mime: string; size?: number }
 // Direct-to-storage upload: signed URL from the API, PUT the bytes, then confirm. Needs a connection (not queued).
 const LIMIT: Record<string, number> = { "application/pdf": 10_000_000, "image/jpeg": 12_000_000, "image/png": 12_000_000 };
 export async function uploadPicked(urlPath: string, confirmPath: string, f: Picked, extra: Record<string, unknown> = {}) {
   const meta = { mime: f.mime, size: f.size };
   if (!(f.mime in LIMIT)) throw new ApiError(400, "file_type_not_allowed");
-  const bytes = await stage("read-file", async () => {
-    const r = await fetch(f.uri);
-    if (!r.ok && r.status !== 0) throw new Error(`cannot read ${f.uri.slice(0, 60)} (${r.status})`);
-    return r.arrayBuffer();
-  }, meta);
+  const bytes = await stage("read-file", () => readPicked(f.uri), meta);
   if (bytes.byteLength > LIMIT[f.mime]!) throw new ApiError(400, "file_too_large");
   const sha = await stage("checksum", () => sha256Hex(bytes), meta);
   const slot = await stage("get-link", () => post(urlPath, { mime: f.mime, size: bytes.byteLength, ...extra }), meta);
@@ -100,3 +106,5 @@ async function sha256Hex(buf: ArrayBuffer) {
   const d = await digest(CryptoDigestAlgorithm.SHA256, buf);
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+setDiagReporter((b) => post("/me/diag", b));
