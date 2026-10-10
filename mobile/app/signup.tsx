@@ -1,6 +1,7 @@
 import { Link, Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { ApiError } from "../src/api";
+import { API } from "../src/config";
 import { useT } from "../src/i18n";
 import { kv } from "../src/kv";
 import { useSession } from "../src/session";
@@ -24,7 +25,7 @@ export default function Signup() {
       const d = await signIn("signup", { role, language: lang, consent: true, fullName: f.fullName.trim(), phone: f.phone.trim(), password: f.password, ...(f.email && { email: f.email.trim() }), ...(role === "PARENT" && { occupation: f.occupation.trim() }) });
       await kv.set("otp", { devCode: d?.verification?.devCode ?? "", channel: d?.verification?.channel ?? "" });
       router.replace("/verify");
-    } catch (e) { setMsg(e instanceof ApiError && e.status === 0 ? t("err.network") : err(e)); } finally { setBusy(false); }
+    } catch (e) { setMsg(e instanceof ApiError && e.status === 0 ? `${t("err.network")} (${API})` : err(e)); } finally { setBusy(false); }
   };
   return (
     <AuthFrame>

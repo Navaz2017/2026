@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "./api";
+import { API } from "./config";
 import { LANGS, useT } from "./i18n";
 import { useOnline } from "./net";
 import { usePendingCount } from "./offline";
@@ -173,7 +174,10 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
           <LanguagePicker value={lang} onChange={setLang} dark />
         </View>
       </SafeAreaView>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+        {children}
+        {__DEV__ && <Text selectable style={{ color: C.ink2, fontSize: 13, marginTop: 8 }}>Server: {API}</Text>}
+      </ScrollView>
     </View>
   );
 }

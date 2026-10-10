@@ -2,6 +2,7 @@ import { Link, Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { Text } from "react-native";
 import { ApiError } from "../src/api";
+import { API } from "../src/config";
 import { useT } from "../src/i18n";
 import { useSession } from "../src/session";
 import { AuthFrame, Btn, C, Card, Field, H1, LinkBtn, Msg, useErr } from "../src/ui";
@@ -18,7 +19,7 @@ export default function Login() {
     setBusy(true); setMsg("");
     try { await signIn("login", { identifier: id.trim(), password: pw, ...(code && { code: code.trim() }) }); router.replace("/"); }
     catch (e) {
-      if (e instanceof ApiError && e.code === "mfa_required") { setNeedCode(true); setMsg(t("auth.mfaNeeded")); } else setMsg(e instanceof ApiError && e.status === 0 ? t("err.network") : err(e));
+      if (e instanceof ApiError && e.code === "mfa_required") { setNeedCode(true); setMsg(t("auth.mfaNeeded")); } else setMsg(e instanceof ApiError && e.status === 0 ? `${t("err.network")} (${API})` : err(e));
     } finally { setBusy(false); }
   };
   return (
