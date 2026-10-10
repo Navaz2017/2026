@@ -17,16 +17,20 @@ Schools and the platform owner use the website; they see a "use the website" scr
 ```bash
 cd mobile
 npm install
-# where is the API?  emulator: http://10.0.2.2:4000   phone on same Wi-Fi: http://<your server's LAN IP>:4000
-EXPO_PUBLIC_API_URL=http://192.168.1.20:4000 npx expo start
+npx expo start
 ```
-Scan the QR with **Expo Go** (Android) or the Camera app (iOS). The API's `CORS_ORIGINS` is only needed for the browser build.
+Scan the QR with **Expo Go** (Android) or the Camera app (iOS). The phone and the computer must be on the same Wi-Fi.
+**No API address to type:** in development the app uses the computer that runs `expo start` (port 4000) automatically.
+If the API is elsewhere, put it in `mobile/.env` (copy `.env.example`; Expo reads it by itself, restart after editing):
+`EXPO_PUBLIC_API_URL=http://192.168.1.20:4000`. Release builds must set it to your **https** address.
+The API's `CORS_ORIGINS` only matters for the browser build (`npx expo start --web`).
 Verification codes: with no WhatsApp/SMS configured on the server (development) the code is shown on the screen.
 
 ## Build installable apps (free account is enough to start)
 ```bash
 npm i -g eas-cli && eas login
-EXPO_PUBLIC_API_URL=https://api.example.org eas build -p android --profile preview   # APK to share
+# put EXPO_PUBLIC_API_URL=https://api.example.org in mobile/.env first (or in eas.json env)
+eas build -p android --profile preview   # APK to share
 eas build -p ios --profile preview                                                   # needs an Apple developer account (paid)
 ```
 Change the bundle id / package (`mw.enrolla.app`) in `app.json` to your own before publishing. Set `EXPO_PUBLIC_API_URL` to your **HTTPS** address for release builds.

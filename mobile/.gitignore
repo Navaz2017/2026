@@ -5,3 +5,5 @@ dist/
 expo-env.d.ts
 dist-web/
 dist-android/
+.env
+.env.local
