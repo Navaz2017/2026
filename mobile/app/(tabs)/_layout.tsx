@@ -18,6 +18,7 @@ export default function TabsLayout() {
     <Tabs screenOptions={{ headerStyle: { backgroundColor: C.navy }, headerTintColor: "#fff", tabBarActiveTintColor: C.navy, tabBarLabelStyle: { fontSize: 13 }, tabBarStyle: { minHeight: 58, paddingBottom: 6 } }}>
       <Tabs.Screen name="index" options={{ title: t("nav.browse"), tabBarIcon: icon("⌕") }} />
       <Tabs.Screen name="applications" options={{ title: t("nav.myApps"), tabBarIcon: icon("☰") }} />
+      <Tabs.Screen name="school" options={{ title: t("nav.mySchool"), tabBarIcon: icon("✎") }} />
       <Tabs.Screen name="notifications" options={{ title: t("nav.notifications"), tabBarIcon: icon("✉"), tabBarBadge: unread > 0 ? unread : undefined }} />
       <Tabs.Screen name="account" options={{ title: t("m.account"), tabBarIcon: icon("☺") }} />
     </Tabs>

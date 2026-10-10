@@ -15,11 +15,17 @@ export const NAV: Record<Role, NavItem[]> = {
     { href: "/app/institution", key: "nav.dashboard", icon: "dashboard" }, { href: "/app/institution/applications", key: "nav.applications", icon: "inbox" },
     { href: "/app/institution/programs", key: "nav.programs", icon: "cap" }, { href: "/app/institution/media", key: "nav.gallery", icon: "image" },
     { href: "/app/institution/letters", key: "nav.letters", icon: "mail" }, { href: "/app/institution/grades", key: "nav.grades", icon: "note" },
+    { href: "/app/school", key: "nav.school", icon: "cap" },
     { href: "/app/institution/whatsapp", key: "nav.whatsapp", icon: "chat" }, { href: "/app/institution/earnings", key: "nav.earnings", icon: "wallet" },
     { href: "/app/institution/profile", key: "nav.profile", icon: "bank" }, { href: "/app/institution/documents", key: "nav.documents", icon: "folder" }, { href: "/app/security", key: "nav.security", icon: "lock" },
   ],
+  TEACHER: [
+    { href: "/app/school", key: "nav.school", icon: "cap" }, { href: "/app/school/attendance", key: "nav.attendance", icon: "check" },
+    { href: "/app/school/results", key: "nav.results", icon: "note" }, { href: "/app/school/announcements", key: "nav.notices", icon: "mail" },
+    { href: "/app/security", key: "nav.security", icon: "lock" },
+  ],
   PARENT: [
-    { href: "/app/family", key: "nav.children", icon: "family" }, { href: "/app/browse", key: "nav.browse", icon: "search" },
+    { href: "/app/family", key: "nav.children", icon: "family" }, { href: "/app/family/school", key: "nav.mySchool", icon: "cap" }, { href: "/app/browse", key: "nav.browse", icon: "search" },
     { href: "/app/family/applications", key: "nav.myApps", icon: "inbox" }, { href: "/app/family/documents", key: "nav.myDocs", icon: "folder" }, { href: "/app/security", key: "nav.security", icon: "lock" },
   ],
   STUDENT: [

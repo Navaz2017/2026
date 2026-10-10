@@ -12,7 +12,7 @@ import { useRealtime } from "@/lib/realtime";
 import { Msg } from "@/lib/ui";
 
 const ROLE_PREFIX: Record<string, string> = { SYSTEM_OWNER: "/app/owner", INSTITUTION_ADMIN: "/app/institution" };
-const GROUP: Record<string, string> = { SYSTEM_OWNER: "nav.group.owner", INSTITUTION_ADMIN: "nav.group.institution", PARENT: "nav.group.family", STUDENT: "nav.group.family" };
+const GROUP: Record<string, string> = { SYSTEM_OWNER: "nav.group.owner", INSTITUTION_ADMIN: "nav.group.institution", TEACHER: "nav.group.school", PARENT: "nav.group.family", STUDENT: "nav.group.family" };
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut, changeLanguage } = useSession();
@@ -25,7 +25,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
     const other = Object.entries(ROLE_PREFIX).find(([role, p]) => role !== user.role && path.startsWith(p));
-    if (other) router.replace(homeFor(user.role));
+    const teacherOut = user.role === "TEACHER" && !["/app/school", "/app/notifications", "/app/security", "/app/verify"].some((p) => path.startsWith(p));
+    if (other || teacherOut) router.replace(homeFor(user.role));
   }, [user, path, router]);
 
   // Unverified phone: the only reachable screen is the verification page.

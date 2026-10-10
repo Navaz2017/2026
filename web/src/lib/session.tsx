@@ -8,7 +8,7 @@ interface Ctx { user: User | null; loading: boolean; reload: () => Promise<void>
 const Session = createContext<Ctx>(null as never);
 export const useSession = () => useContext(Session);
 
-export const homeFor = (r: Role) => ({ SYSTEM_OWNER: "/app/owner", INSTITUTION_ADMIN: "/app/institution", PARENT: "/app/family", STUDENT: "/app/family" })[r];
+export const homeFor = (r: Role) => ({ SYSTEM_OWNER: "/app/owner", INSTITUTION_ADMIN: "/app/institution", TEACHER: "/app/school", PARENT: "/app/family", STUDENT: "/app/family" })[r];
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

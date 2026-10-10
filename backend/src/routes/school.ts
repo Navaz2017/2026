@@ -32,7 +32,7 @@ const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 // ------------------------------------------------------------------ staff (teachers)
 school.get("/staff", adminOnly, h(async (req, res) => {
-  res.json(await prisma.user.findMany({ where: { institutionId: instOf(req.user!), role: "TEACHER" }, select: { id: true, fullName: true, phone: true, phoneVerifiedAt: true, disabledAt: true, teaching: { select: { classId: true, subjectId: true, class: { select: { name: true } }, subject: { select: { name: true } } } } }, orderBy: { fullName: "asc" } }));
+  res.json(await prisma.user.findMany({ where: { institutionId: instOf(req.user!), role: "TEACHER" }, select: { id: true, fullName: true, phone: true, phoneVerifiedAt: true, disabledAt: true, teaching: { select: { id: true, classId: true, subjectId: true, class: { select: { name: true } }, subject: { select: { name: true } } } } }, orderBy: { fullName: "asc" } }));
 }));
 
 // A teacher is added by phone number. They sign in the normal way: "Forgot password" with that number sends a code and lets them choose a password.

@@ -1,7 +1,7 @@
 import { sha256Hex } from "./sha256";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-export type Role = "SYSTEM_OWNER" | "INSTITUTION_ADMIN" | "PARENT" | "STUDENT";
+export type Role = "SYSTEM_OWNER" | "INSTITUTION_ADMIN" | "TEACHER" | "PARENT" | "STUDENT";
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public body?: any) { super(code); }

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { getAccessToken, refreshSession } from "./api";
-import { useT } from "./i18n";
+import { notifText, useT } from "./i18n";
 import { useSession } from "./session";
 
 // Live updates over a WebSocket to OUR OWN API (/v1/realtime): the self-hosted equivalent of Firebase's real-time channel.
@@ -12,7 +12,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const WS_URL = API.replace(/^http/, "ws") + "/v1/realtime";
 
 export interface LiveEvent { type: string; [k: string]: any }
-interface Toast { id: string; type: string }
+interface Toast { id: string; type: string; title?: string; data?: any }
 interface Ctx { unread: number; setUnread: (n: number) => void; connected: boolean; subscribe: (f: (e: LiveEvent) => void) => () => void }
 const Realtime = createContext<Ctx>({ unread: 0, setUnread: () => {}, connected: false, subscribe: () => () => {} });
 export const useRealtime = () => useContext(Realtime);
@@ -47,7 +47,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         else if (m.type === "notification") {
           setUnread((n) => n + 1);
           const id = m.notification?.id ?? String(Date.now());
-          setToasts((x) => [...x.slice(-2), { id, type: m.notification?.type ?? "" }]);
+          setToasts((x) => [...x.slice(-2), { id, type: m.notification?.type ?? "", title: m.notification?.title, data: m.notification?.data }]);
           setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), 8000);
         } else if (m.type === "read") setUnread(0);
         subs.current.forEach((f) => f(m));
@@ -67,12 +67,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     return () => { stopped = true; if (timer) clearTimeout(timer); if (renew) clearInterval(renew); ws?.close(); setConnected(false); };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const text = (type: string) => (t(`notif.${type}`) === `notif.${type}` ? type : t(`notif.${type}`));
+  const text = (x: { type: string; title?: string; data?: any }) => notifText(t, x);
   return (
     <Realtime.Provider value={{ unread, setUnread, connected, subscribe }}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
-        {toasts.map((x) => <div key={x.id} className="toast"><span>{text(x.type)}</span> <Link href="/app/notifications">{t("rt.view")}</Link></div>)}
+        {toasts.map((x) => <div key={x.id} className="toast"><span>{text(x)}</span> <Link href="/app/notifications">{t("rt.view")}</Link></div>)}
       </div>
     </Realtime.Provider>
   );

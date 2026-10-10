@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Pressable, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useT } from "./i18n";
+import { notifText, useT } from "./i18n";
 import { setLive, useStore } from "./realtime";
 import { C } from "./ui";
 
@@ -13,7 +13,7 @@ export function LiveToast() {
   const router = useRouter();
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setLive({ toast: null }), 7000); return () => clearTimeout(id); }, [toast]);
   if (!toast) return null;
-  const text = t(`notif.${toast.type}`) === `notif.${toast.type}` ? toast.type : t(`notif.${toast.type}`);
+  const text = notifText(t, toast);
   return (
     <SafeAreaView edges={["top"]} pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 50 }}>
       <Pressable testID="live-toast" accessibilityRole="alert" onPress={() => { setLive({ toast: null }); router.push("/notifications"); }}

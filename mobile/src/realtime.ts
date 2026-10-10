@@ -9,7 +9,7 @@ import { onReconnect } from "./net";
 // Google/Apple push, which this project deliberately does not depend on. Anything missed is caught up on reconnect.
 const WS_URL = API.replace(/^http/, "ws") + "/v1/realtime";
 
-interface State { unread: number; connected: boolean; toast: { id: string; type: string } | null; version: number }
+interface State { unread: number; connected: boolean; toast: { id: string; type: string; title?: string; data?: any } | null; version: number }
 let state: State = { unread: 0, connected: false, toast: null, version: 0 };
 const subs = new Set<() => void>();
 export const setLive = (p: Partial<State>) => { state = { ...state, ...p }; subs.forEach((f) => f()); };
@@ -33,7 +33,7 @@ export function startRealtime() {
     sock.onmessage = (ev) => {
       let m: any; try { m = JSON.parse(String(ev.data)); } catch { return; }
       if (m.type === "ready") { tries = 0; setLive({ connected: true, unread: m.unread ?? 0, version: state.version + 1 }); } // version bump = catch up on anything missed
-      else if (m.type === "notification") setLive({ unread: state.unread + 1, toast: { id: m.notification?.id ?? String(Date.now()), type: m.notification?.type ?? "" }, version: state.version + 1 });
+      else if (m.type === "notification") setLive({ unread: state.unread + 1, toast: { id: m.notification?.id ?? String(Date.now()), type: m.notification?.type ?? "", title: m.notification?.title, data: m.notification?.data }, version: state.version + 1 });
       else if (m.type === "read") setLive({ unread: 0 });
     };
     sock.onclose = async (ev) => {

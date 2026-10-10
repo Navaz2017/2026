@@ -60,10 +60,21 @@ Admissions end to end (wizard, payments by SMS matching, decision letters send-n
 3 languages. **Not built / unverified**: SMS forwarder on a real phone, real WhatsApp pairing/delivery, push to closed apps (needs FCM/APNs, deliberately skipped),
 virus scanning of uploads, refunds, undo of a decision, multiple staff per institution (needed by School Hub teachers), load test for 70k users, independent security test, CI.
 
-## School Hub - build status (update this list as you go)
-See `docs/school-hub.md` for the decisions and data model. Phase 1 status:
-- [ ] schema + migration (Role TEACHER, SchoolClass, Subject, Enrolment, Guardianship, TeachingAssignment, Assessment, Grade, Attendance, Announcement(+Read), RosterImport)
-- [ ] backend routes `/v1/school/*` (staff, classes, roster CSV import, attendance, assessments/grades, announcements) + family read routes `/v1/me/school/*`
-- [ ] web screens (school staff + family)  - [ ] mobile screens (family)
-- [ ] tests  - [ ] docs
-(The checklist below the line "Phase 1 status" is rewritten at the end of the session; trust the git log if they disagree.)
+## School Hub - build status
+Decisions and data model: `docs/school-hub.md`. **Phase 1 is built, tested (backend, 8 integration tests in `school.int.test.ts`) and type-checked; the new web/mobile screens have NOT been exercised in a browser or on a phone** (no e2e yet) - do that first.
+
+Built:
+- [x] Schema + migration `20261011100000_school_hub` (Role TEACHER, SchoolClass, Subject, Enrolment, Guardianship, TeachingAssignment, Assessment, Grade, Attendance, Announcement(+Read), RosterImport).
+- [x] Backend `/v1/school/*` (`routes/school.ts`: staff, classes, subjects, assignments, roster preview/commit/rollback, students, guardianship block, attendance, assessments/grades incl. CSV + publish, announcements) and `/v1/me/school/*` (`routes/schoolFamily.ts`). Logic in `lib/roster.ts`, `lib/schoolAccess.ts`, `lib/grading.ts`, `lib/csv.ts`.
+- [x] i18n keys `sh.*`, `nav.*`, `notif.ATTENDANCE_*|RESULTS_PUBLISHED|ANNOUNCEMENT`, `err.*` in en/ny/tum (ny/tum are my drafts: need native review). Notifications render with `notifText()` (web `lib/i18n.tsx`, mobile `src/i18n.tsx`) using `n.data` as variables.
+- [x] Web: `/app/school` (classes), `/roster`, `/staff`, `/attendance`, `/results`, `/announcements` (admin + teacher; TEACHER role wired into nav/layout/homeFor) and `/app/family/school` (child switcher, progress with feedback, attendance, notices).
+- [x] Mobile: parent/student "School" tab (`mobile/app/(tabs)/school.tsx`).
+
+Remaining, in priority order:
+1. Smoke test it for real: `npm run dev:all`, import `roster/template.csv`, add a teacher, mark attendance, publish a result, read as parent (extend `e2e/e2e.mjs`; mobile `e2e/mobile-run.sh`).
+2. Teacher sign-in UX: teachers are added by phone and must use "Forgot password" once. Add an explicit invite link/SMS text and a first-login hint. Teacher mobile screens (attendance + grades) - web only for now.
+3. Phase 2: teacher<->guardian threads (one per child per teacher, ALL guardians of the child see the same thread; `Guardianship.canMessage`), class channels (teacher+students), homework submissions, quiet-hours setting (default OFF; urgent notices ignore it), claim code/QR and first-login "is this your child?" confirmation, staff invite UI polish, WhatsApp copy for urgent notices already works via `WaOutbox`.
+4. Phase 3: paid tutoring subscription for parents (monthly, schools pay nothing; manual 30-day mobile-money payment matched by the SMS reader like admissions payments), teacher data bundles (check Africa's Talking airtime support for Malawi), fees tracking, report-card PDFs, primary grading scales (percentage only today), xlsx import.
+5. Still open from before: native-speaker review of Chichewa/Tumbuka, real-phone tests (SMS forwarder, WhatsApp, native date picker), 70k-user load test, independent security test, CI, Malawi data-protection review for children's records.
+
+Gotchas: after pulling, run `npx prisma generate && npx prisma migrate deploy` in `backend/` (stale client gives "Unknown argument"). In a fresh sandbox start Postgres (`pg_ctlcluster 16 main start`), create role/db, and export `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` before `npm run test:int`.

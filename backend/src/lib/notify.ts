@@ -5,7 +5,7 @@ export async function notifyUsers(userIds: string[], type: string, title: string
   if (!userIds.length) return;
   const rows = await prisma.notification.createManyAndReturn({ data: userIds.map((userId) => ({ userId, type, title, body, data })) });
   // Live delivery to anyone who has the app open (no-op if nobody is connected).
-  for (const n of rows) await publish([n.userId], { type: "notification", notification: { id: n.id, type: n.type, data: n.data, createdAt: n.createdAt, readAt: null } });
+  for (const n of rows) await publish([n.userId], { type: "notification", notification: { id: n.id, type: n.type, title: n.title, data: n.data, createdAt: n.createdAt, readAt: null } });
 }
 
 export async function institutionAdminIds(institutionId: string) {

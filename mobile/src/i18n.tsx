@@ -27,3 +27,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   return <I18n.Provider value={value}>{children}</I18n.Provider>;
 }
 export const useT = () => useContext(I18n);
+
+// Text of a notification: announcements show the school's own title; others are translated with the event's data ({name}, {date}...).
+export function notifText(t: (k: string, v?: any) => string, n: { type: string; title?: string; data?: any }) {
+  if (n.type === "ANNOUNCEMENT" && n.title) return n.title;
+  const key = `notif.${n.type}`, s = t(key, n.data && typeof n.data === "object" ? n.data : undefined);
+  return s === key ? n.type : s;
+}
