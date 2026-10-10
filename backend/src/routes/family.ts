@@ -28,7 +28,11 @@ family.post("/children", requireRole("PARENT"), body(z.object({
   currentSchoolId: z.string().uuid().optional(), currentSchoolName: z.string().optional(),
 })), h(async (req, res) => {
   const p = await prisma.parentProfile.findUniqueOrThrow({ where: { userId: req.user!.sub } });
-  res.status(201).json(await prisma.student.create({ data: { ...req.body, parentId: p.id } }));
+  const me = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.sub }, select: { phone: true, fullName: true } });
+  const child = await prisma.student.create({ data: { ...req.body, parentId: p.id } });
+  // School Hub: the parent is also an ACTIVE guardian of the child (several guardians per child are possible)
+  if (me.phone) await prisma.guardianship.create({ data: { studentId: child.id, guardianUserId: req.user!.sub, phone: me.phone, fullName: me.fullName, relationship: "PARENT", isPrimary: true, source: "ADMISSIONS" } });
+  res.status(201).json(child);
 }));
 
 family.get("/children", requireRole("PARENT"), h(async (req, res) => {
@@ -254,7 +258,8 @@ family.post("/applications/:id/payment", requireVerifiedPhone, body(z.object({
 }));
 
 // ---- Read endpoints for the web app (the mobile app gets the same data through /sync/pull)
-const mine = (req: any) => (req.user.role === "PARENT" ? { parent: { userId: req.user.sub } } : { userId: req.user.sub });
+// a parent acts for their own children AND for children a school linked them to as guardians
+const mine = (req: any) => (req.user.role === "PARENT" ? { OR: [{ parent: { userId: req.user.sub } }, { guardianships: { some: { guardianUserId: req.user.sub, status: "ACTIVE", relationship: { in: ["PARENT", "GUARDIAN"] } } } }] } : { userId: req.user.sub });
 
 family.get("/applications", h(async (req, res) => {
   res.json((await prisma.application.findMany({

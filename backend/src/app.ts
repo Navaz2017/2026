@@ -12,6 +12,8 @@ import { sync } from "./routes/sync.js";
 import { admin } from "./routes/admin.js";
 import { publicCatalog } from "./routes/public.js";
 import { files } from "./routes/files.js";
+import { school } from "./routes/school.js";
+import { schoolFamily } from "./routes/schoolFamily.js";
 import { HttpError } from "./lib/storage.js";
 
 export const app = express();
@@ -38,7 +40,9 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 app.use("/v1/public", publicCatalog);
 app.use("/v1/sync", sync);
 app.use("/v1/institution", institutions);
+app.use("/v1/me/school", schoolFamily); // before /v1/me
 app.use("/v1/me", family);
+app.use("/v1/school", school);
 app.use("/v1/sms", sms);
 app.use("/v1/admin", admin);
 if (config.STORAGE_DRIVER === "local") app.use("/v1/files", files);

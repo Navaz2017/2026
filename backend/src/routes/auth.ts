@@ -13,6 +13,7 @@ import { newSecret, verifyCode } from "../lib/totp.js";
 import { sendEmail } from "../lib/mailer.js";
 import { audit } from "../lib/audit.js";
 import { publish } from "../realtime.js";
+import { linkGuardianships } from "../lib/schoolAccess.js";
 import { OtpError, checkOtp, sendOtp } from "../lib/otp.js";
 
 export const auth = Router();
@@ -257,6 +258,7 @@ auth.post("/phone/verify", authenticate, strict, body(z.object({ code: z.string(
   if (!u.phone) return res.status(400).json({ error: "no_phone" });
   if (!u.phoneVerifiedAt && !(await checkOtp(u.phone, "SIGNUP", req.body.code))) return res.status(400).json({ error: "invalid_code" });
   if (!u.phoneVerifiedAt) await prisma.user.update({ where: { id: u.id }, data: { phoneVerifiedAt: new Date() } });
+  await linkGuardianships(u.id); // children a school listed under this phone number appear at once
   res.json({ ok: true, phoneVerified: true });
 }));
 // Typo in the number? Allowed only until it is verified.

@@ -14,6 +14,7 @@ enum Role {
   INSTITUTION_ADMIN
   PARENT
   STUDENT
+  TEACHER
 }
 
 enum InstitutionType {
@@ -95,6 +96,10 @@ model User {
   otps          OtpCode[]
 
   @@index([role])
+  guardianships  Guardianship[]  @relation("GuardianUser")
+  teaching       TeachingAssignment[]
+  classesLed     SchoolClass[]   @relation("ClassTeacher")
+  announcementReads AnnouncementRead[]
 }
 
 // One-time codes for when the authenticator phone is lost. Stored hashed; shown to the user once.
@@ -242,6 +247,11 @@ model Institution {
   lettersReleaseAt DateTime? // HOLD: release every pending letter automatically at this moment (null = release by hand)
 
   @@index([status, type])
+  classes       SchoolClass[]
+  subjects      Subject[]
+  enrolments    Enrolment[]
+  announcements Announcement[]
+  rosterImports RosterImport[]
 }
 
 model InstitutionDocument {
@@ -335,6 +345,8 @@ model Student {
   gradeRequests GradeRequest[]
 
   @@index([parentId])
+  enrolments    Enrolment[]
+  guardianships Guardianship[]
 }
 
 model Credential {
@@ -576,4 +588,196 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+
+// ============================== School Hub (see docs/school-hub.md) ==============================
+// Everything a school owns hangs off an Enrolment (student x school x year) and carries institutionId.
+
+model SchoolClass {
+  id             String      @id @default(uuid())
+  institutionId  String
+  institution    Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  academicYear   String
+  name           String // "Form 3A"
+  level          String // F1..F4 (JCE = F1-F2, MSCE = F3-F4) | STD1..STD8
+  classTeacherId String?
+  classTeacher   User?       @relation("ClassTeacher", fields: [classTeacherId], references: [id])
+  createdAt      DateTime    @default(now())
+
+  enrolments  Enrolment[]
+  assignments TeachingAssignment[]
+  assessments Assessment[]
+
+  @@unique([institutionId, academicYear, name])
+}
+
+model Subject {
+  id            String      @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  name          String
+
+  assignments TeachingAssignment[]
+  assessments Assessment[]
+
+  @@unique([institutionId, name])
+}
+
+// A teacher teaches a subject in a class (subjectId null = class teacher of that class).
+model TeachingAssignment {
+  id           String      @id @default(uuid())
+  teacherId    String
+  teacher      User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  classId      String
+  class        SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subjectId    String?
+  subject      Subject?    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYear String
+
+  @@unique([teacherId, classId, subjectId])
+  @@index([classId])
+}
+
+model Enrolment {
+  id            String       @id @default(uuid())
+  studentId     String
+  student       Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  academicYear  String
+  classId       String?
+  class         SchoolClass? @relation(fields: [classId], references: [id])
+  admissionNo   String
+  status        String       @default("ACTIVE") // ACTIVE | LEFT | GRADUATED
+  joinedAt      DateTime     @default(now())
+  leftAt        DateTime?
+  importId      String? // roster import that created it (rollback)
+
+  grades     Grade[]
+  attendance Attendance[]
+
+  @@unique([institutionId, academicYear, admissionNo])
+  @@unique([studentId, institutionId, academicYear])
+  @@index([classId])
+}
+
+// Who may see / message about a child. phone = roster join key (E.164); guardianUserId is set when that phone logs in (OTP-verified).
+model Guardianship {
+  id                  String   @id @default(uuid())
+  studentId           String
+  student             Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardianUserId      String?
+  guardian            User?    @relation("GuardianUser", fields: [guardianUserId], references: [id])
+  phone               String
+  fullName            String
+  relationship        String   @default("PARENT") // PARENT | GUARDIAN | NEXT_OF_KIN
+  canViewProgress     Boolean  @default(true)
+  canMessage          Boolean  @default(true)
+  receivesNotices     Boolean  @default(true)
+  isPrimary           Boolean  @default(false)
+  blockedInstitutionIds String[] @default([]) // schools that must show this person nothing (court order etc.)
+  status              String   @default("ACTIVE") // ACTIVE | REVOKED
+  source              String   @default("ROSTER") // ROSTER | CLAIM | ADMISSIONS
+  importId            String?
+  createdAt           DateTime @default(now())
+
+  @@unique([studentId, phone])
+  @@index([phone])
+  @@index([guardianUserId])
+}
+
+model Assessment {
+  id            String      @id @default(uuid())
+  institutionId String
+  classId       String
+  class         SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subjectId     String
+  subject       Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYear  String
+  termNo        Int // 1..3
+  title         String
+  type          String      @default("TEST") // TEST | EXAM | ASSIGNMENT
+  maxScore      Int         @default(100)
+  date          DateTime?
+  publishedAt   DateTime? // families see results only once published
+  createdById   String
+  createdAt     DateTime    @default(now())
+
+  grades Grade[]
+
+  @@index([classId, termNo])
+}
+
+model Grade {
+  id           String     @id @default(uuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  enrolmentId  String
+  enrolment    Enrolment  @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+  score        Float?
+  feedback     String? // personalised teacher feedback: visible to the student and their guardians
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([assessmentId, enrolmentId])
+}
+
+model Attendance {
+  id          String    @id @default(uuid())
+  enrolmentId String
+  enrolment   Enrolment @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+  date        DateTime  @db.Date
+  status      String // PRESENT | ABSENT | LATE | EXCUSED
+  note        String?
+  markedById  String
+  notifiedAt  DateTime? // guardians told about this absence/lateness
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([enrolmentId, date])
+  @@index([date])
+}
+
+model Announcement {
+  id            String      @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  authorId      String
+  title         String
+  body          String
+  audience      String      @default("SCHOOL") // SCHOOL | CLASS
+  classIds      String[]    @default([])
+  urgent        Boolean     @default(false) // ignores quiet hours (there are none by default)
+  alsoWhatsApp  Boolean     @default(false) // secondary channel, from the school's own linked number
+  recipients    Int         @default(0)
+  createdAt     DateTime    @default(now())
+
+  reads AnnouncementRead[]
+
+  @@index([institutionId, createdAt])
+}
+
+model AnnouncementRead {
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@id([announcementId, userId])
+}
+
+// A roster upload: PREVIEW (nothing saved yet) -> COMMITTED -> maybe ROLLED_BACK.
+model RosterImport {
+  id            String      @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  createdById   String
+  status        String      @default("PREVIEW")
+  fileName      String?
+  academicYear  String
+  rows          Json
+  summary       Json
+  createdAt     DateTime    @default(now())
+  committedAt   DateTime?
+  rolledBackAt  DateTime?
 }
