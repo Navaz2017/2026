@@ -12,6 +12,7 @@ import { sync } from "./routes/sync.js";
 import { admin } from "./routes/admin.js";
 import { publicCatalog } from "./routes/public.js";
 import { files } from "./routes/files.js";
+import { HttpError } from "./lib/storage.js";
 
 export const app = express();
 app.set("trust proxy", 1); // behind the load balancer; req.ip is then the real client for rate limits and audit
@@ -43,6 +44,7 @@ app.use("/v1/admin", admin);
 if (config.STORAGE_DRIVER === "local") app.use("/v1/files", files);
 
 const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof HttpError) return void res.status(err.status).json({ error: err.code });
   console.error(err); // swap for pino + Sentry; never return stack traces to clients
   res.status(500).json({ error: "internal" });
 };

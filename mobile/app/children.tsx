@@ -2,7 +2,7 @@ import { useState } from "react";
 import { post, put } from "../src/api";
 import { useT } from "../src/i18n";
 import { useResource } from "../src/offline";
-import { Btn, Card, Empty, Field, Loading, Msg, P, Screen, Select, dt, useBusy } from "../src/ui";
+import { Btn, Card, DateField, Empty, Field, Loading, Msg, P, Screen, Select, dt, useBusy } from "../src/ui";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export default function Children() {
@@ -20,7 +20,7 @@ export default function Children() {
       </Card>
       <Card title={t("fam.addChild")}>
         <Field testID="childName" label={t("auth.fullName")} value={f.fullName} onChange={set("fullName")} required />
-        <Field testID="childDob" label={t("fam.dob")} hint={t("m.dateHint")} value={f.dateOfBirth} onChange={set("dateOfBirth")} required placeholder="2012-03-25" keyboardType="numbers-and-punctuation" />
+        <DateField testID="childDob" label={t("fam.dob")} value={f.dateOfBirth} onChange={set("dateOfBirth")} required initial="2012-01-01" />
         <Select label={t("fam.gender")} value={f.gender} onChange={set("gender")} options={[["M", t("fam.boy")], ["F", t("fam.girl")]]} />
         <Field label={t("fam.currentSchool")} value={f.currentSchoolName} onChange={set("currentSchoolName")} />
         {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}

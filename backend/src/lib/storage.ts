@@ -10,8 +10,8 @@ const local = config.STORAGE_DRIVER === "local";
 
 const ALLOWED: Record<string, number> = {
   "application/pdf": 10_000_000,
-  "image/jpeg": 8_000_000,
-  "image/png": 8_000_000,
+  "image/jpeg": 12_000_000, // phone photos are often 5-10 MB; the apps also shrink them before sending
+  "image/png": 12_000_000,
   "video/mp4": 200_000_000,
 };
 
@@ -42,9 +42,13 @@ export const localMime = (key: string) => fs.readFile(localPath(key) + ".mime", 
 
 // Clients upload straight to the private bucket (keeps 70k users' bytes off the API servers).
 // Content-type and size are pinned in the signature. A malware-scan Lambda should gate `quarantine/` -> live key.
+// An error the API turns into a normal 4xx answer (instead of a bare 500).
+export class HttpError extends Error { constructor(public status: number, public code: string) { super(code); } }
+
 export async function presignUpload(prefix: string, mime: string, size: number) {
   const max = ALLOWED[mime];
-  if (!max || size > max) throw new Error("File type or size not allowed");
+  if (!max) throw new HttpError(400, "file_type_not_allowed");
+  if (size > max) throw new HttpError(400, "file_too_large");
   const key = `${prefix}/${randomUUID()}`;
   if (local) return { key, url: `${config.PUBLIC_API_URL}/v1/files/put/${sign({ op: "put", key, mime, size, exp: Date.now() + 300_000 })}`, headers: { "Content-Type": mime } };
   const { s3, S3, sign: signUrl } = await aws();

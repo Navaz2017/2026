@@ -37,7 +37,7 @@ export default function Signup() {
         <Field testID="email" label={t("auth.emailOptional")} value={f.email} onChange={set("email")} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
         {role === "PARENT" && <Field testID="occupation" label={t("auth.occupation")} value={f.occupation} onChange={set("occupation")} required />}
         <Field testID="newpw" label={t("common.password")} hint={t("auth.passwordHelp")} value={f.password} onChange={set("password")} required secureTextEntry autoComplete="new-password" />
-        <Check label={t("auth.consent")} checked={consent} onChange={setConsent} />
+        <Check label={t(role === "PARENT" ? "auth.consent" : "auth.consentStudent")} checked={consent} onChange={setConsent} />
         <Msg kind="err">{msg}</Msg>
         <Btn testID="submit" label={t("auth.signUp")} busy={busy} disabled={!ok} onPress={go} />
         <Link href="/login" style={{ paddingVertical: 12, fontSize: 16, textDecorationLine: "underline" }}>{t("auth.haveAccount")} {t("auth.signIn")}</Link>

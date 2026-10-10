@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from "react-native";
+import React, { createElement, useState } from "react";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from "react-native";
+import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "./api";
 import { API } from "./config";
@@ -100,6 +101,42 @@ export function Field({ label, hint, value, onChange, required, testID, ...rest 
     <View style={{ marginBottom: 14 }}>
       <Text style={s.label}>{label}{required ? " *" : ""}</Text>
       <TextInput testID={testID} accessibilityLabel={label} style={[s.input, rest.multiline && { minHeight: 96, textAlignVertical: "top" }]} value={value == null ? "" : String(value)} onChangeText={onChange} placeholderTextColor="#8a93a3" {...rest} />
+      {hint ? <Text style={s.hint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+// A real date picker (value as YYYY-MM-DD): the phone's calendar on Android/iOS, the browser's own picker on the web build.
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+export function DateField({ label, value, onChange, required, hint, testID, max = new Date(), min, initial }: { label: string; value: string; onChange: (v: string) => void; required?: boolean; hint?: string; testID?: string; max?: Date; min?: Date; initial?: string }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const cur = value ? new Date(`${value}T12:00:00`) : new Date(`${initial ?? "2008-01-01"}T12:00:00`);
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={s.label}>{label}{required ? " *" : ""}</Text>
+      {Platform.OS === "web"
+        ? createElement("input", { type: "date", value, "aria-label": label, "data-testid": testID, max: iso(max), min: min ? iso(min) : undefined, onChange: (e: any) => onChange(e.target.value), style: { minHeight: 48, border: "1px solid #aab3c2", borderRadius: 6, padding: "0 12px", fontSize: 17, color: C.ink, background: "#fff", boxSizing: "border-box", width: "100%" } })
+        : (
+          <>
+            <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={() => {
+              if (Platform.OS === "android") DateTimePickerAndroid.open({ value: cur, mode: "date", maximumDate: max, minimumDate: min, onChange: (_e, d) => { if (d) onChange(iso(d)); } });
+              else setOpen(true);
+            }} style={[s.input, { justifyContent: "center" }]}>
+              <Text style={{ fontSize: 17, color: value ? C.ink : "#8a93a3" }}>{value || t("m.pickDate")}</Text>
+            </Pressable>
+            {Platform.OS === "ios" && (
+              <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+                <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,.4)" }}>
+                  <SafeAreaView edges={["bottom"]} style={{ backgroundColor: C.card }}>
+                    <DateTimePicker value={cur} mode="date" display="spinner" maximumDate={max} minimumDate={min} onChange={(_e, d) => { if (d) onChange(iso(d)); }} />
+                    <Btn label={t("common.save")} onPress={() => { if (!value) onChange(iso(cur)); setOpen(false); }} />
+                  </SafeAreaView>
+                </View>
+              </Modal>
+            )}
+          </>
+        )}
       {hint ? <Text style={s.hint}>{hint}</Text> : null}
     </View>
   );

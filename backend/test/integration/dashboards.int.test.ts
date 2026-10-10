@@ -51,7 +51,7 @@ async function paidApplication(w: Awaited<ReturnType<typeof world>>, withCredent
     credentialId = (await json(c)).id;
   }
   const a = await submitApplication(call, token, u.student!.id, [w.prog.id], { credentialIds: credentialId ? [credentialId] : undefined });
-  const pay = await prisma.payment.create({ data: { applicationId: a.id, provider: "MPAMBA", reference: `REF${i}ABCDEF`, payerPhone: "+265881000000", amountMinor: a.totalDueMinor, status: "CONFIRMED", confirmedAt: new Date() } });
+  const pay = await prisma.payment.update({ where: { id: (await prisma.payment.findFirstOrThrow({ where: { applicationId: a.id } })).id }, data: { status: "CONFIRMED", confirmedAt: new Date() } }); // paid at submit (transaction ID), SMS matched
   await prisma.application.update({ where: { id: a.id }, data: { status: "SUBMITTED" } });
   return { id: a.id as string, token, credentialId, student: u.student!, payment: pay };
 }

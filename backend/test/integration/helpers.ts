@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { prisma } from "../../src/db.js";
 
+let refCounter = 0;
 export type Call = (method: string, path: string, token?: string, body?: unknown) => Promise<Response>;
 
 const personal = { surname: "Banda", firstName: "Test", gender: "M", dateOfBirth: "2005-02-02", nationality: "Malawian", nationalId: "AB123456", homeDistrict: "Zomba", physicalAddress: "Area 3, Zomba", phone: "0999123456" };
@@ -12,7 +13,9 @@ export const sampleForm = (school: boolean, mode = "FULL_TIME") => ({
     ? { previousSchoolName: "Chilomoni Primary", lastClassCompleted: "Standard 5" }
     : { level: "MSCE", schoolName: "Zomba Secondary", year: 2023, subjects: [{ subject: "English", grade: "2" }, { subject: "Mathematics", grade: "3" }] },
   status: { current: "STUDYING" }, guardian: { relationship: "PARENT", name: "Mayi Banda", phone: "0888111222" },
-  study: { mode }, sponsor: { type: "PARENT", name: "Mayi Banda" }, declaration: { accepted: true, signatureName: "Test Banda" },
+  study: { mode }, sponsor: { type: "PARENT", name: "Mayi Banda" },
+  payment: { provider: "MPAMBA", reference: `TID${Date.now().toString(36)}${(++refCounter).toString(36)}`.toUpperCase(), payerPhone: "0881000000" }, // entered before submitting
+  declaration: { accepted: true, signatureName: "Test Banda" },
 });
 
 export async function saveSections(call: Call, token: string, id: string, form: Record<string, unknown>) {
@@ -22,8 +25,8 @@ export async function saveSections(call: Call, token: string, id: string, form: 
   }
 }
 
-// Drives the whole wizard through the API. Returns the submitted application (status AWAITING_PAYMENT).
-export async function submitApplication(call: Call, token: string, studentId: string, programIds: string[], o: { school?: boolean; credentialIds?: string[]; mode?: string; skipDocs?: boolean } = {}) {
+// Drives the whole wizard through the API. Returns the submitted application (status PAYMENT_SUBMITTED, or AWAITING_PAYMENT with `awaitingPayment`).
+export async function submitApplication(call: Call, token: string, studentId: string, programIds: string[], o: { school?: boolean; credentialIds?: string[]; mode?: string; skipDocs?: boolean; awaitingPayment?: boolean; payment?: { provider: string; reference: string; payerPhone?: string } } = {}) {
   const d = await call("POST", "/me/applications/draft", token, { studentId, programId: programIds[0] });
   assert.ok([200, 201].includes(d.status), `draft: ${await d.clone().text()}`);
   const app = (await d.json()) as any;
@@ -39,7 +42,10 @@ export async function submitApplication(call: Call, token: string, studentId: st
     }
     assert.equal((await call("PUT", `/me/applications/${app.id}/documents`, token, { credentialIds: ids })).status, 200);
   }
+  if (o.payment) assert.equal((await call("PUT", `/me/applications/${app.id}/section/payment`, token, { payerPhone: "0881000000", ...o.payment })).status, 200);
   const s = await call("POST", `/me/applications/${app.id}/submit`, token);
   assert.equal(s.status, 200, `submit: ${await s.clone().text()}`);
+  // Simulates "payment was rejected, the applicant must pay again" (the older two-step flow still exists for that case).
+  if (o.awaitingPayment) { await prisma.payment.deleteMany({ where: { applicationId: app.id } }); await prisma.application.update({ where: { id: app.id }, data: { status: "AWAITING_PAYMENT" } }); }
   return (await s.json()) as { id: string; totalDueMinor: number; commissionMinor: number; studentServiceFeeMinor: number; feeMinor: number; status: string };
 }

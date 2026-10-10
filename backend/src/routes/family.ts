@@ -120,9 +120,16 @@ family.put("/applications/:id/section/:name", h(async (req, res) => {
   const schema = SECTIONS[name];
   if (!schema) return res.status(404).json({ error: "not_found" });
   const partial = req.query.partial === "1";
-  const parsed = partial ? (schema as any).partial().safeParse(req.body) : schema.safeParse(req.body);
+  // Nobody is asked for a phone number twice: the applicant's own number is the one they signed up (and verified) with,
+  // and a parent applying for a child is the guardian. (Filled in BEFORE validation.)
+  const me = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.sub }, select: { phone: true, role: true } });
+  const input = { ...req.body };
+  if (me.phone && name === "personal") input.phone = me.phone;
+  if (me.phone && name === "guardian" && me.role === "PARENT") input.phone = me.phone;
+  const parsed = partial ? (schema as any).partial().safeParse(input) : schema.safeParse(input);
   if (!parsed.success) return res.status(400).json({ error: "validation", issues: parsed.error.issues });
   const data = JSON.parse(JSON.stringify(parsed.data)); // dates -> ISO strings for the JSON column
+  if (name === "payment" && data.payerPhone) { const np = normalisePhone(data.payerPhone); if (!np) return res.status(400).json({ error: "invalid_phone" }); data.payerPhone = np; }
   const form = { ...(a.form as object), [name]: data };
   await prisma.application.update({ where: { id: a.id }, data: { form } });
   if (name === "personal" && !partial) { // bio data is entered once and reused for every later application
@@ -171,12 +178,18 @@ family.put("/applications/:id/documents", body(z.object({ credentialIds: z.array
 family.post("/applications/:id/submit", requireVerifiedPhone, h(async (req, res) => {
   const a = await myDraft(req, req.params.id!);
   if (!a || a.status !== "DRAFT") return res.status(a ? 409 : 404).json({ error: a ? "not_editable" : "not_found" });
-  const inst = a.institution, form = a.form as Record<string, any>;
+  const inst = a.institution, form = JSON.parse(JSON.stringify(a.form)) as Record<string, any>;
   const first = a.choices[0]?.program;
   if (!first) return res.status(422).json({ error: "incomplete", missing: [{ section: "choices", step: "programmes", message: "choices" }] });
+  // drafts started before phone numbers stopped being asked: fill them from the account
+  const me = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.sub }, select: { phone: true, role: true } });
+  if (me.phone && form.personal && !form.personal.phone) form.personal.phone = me.phone;
+  if (me.phone && form.guardian && me.role === "PARENT" && !form.guardian.phone) form.guardian.phone = me.phone;
   const student = await prisma.student.findUniqueOrThrow({ where: { id: a.studentId } });
   const age = Math.floor((Date.now() - student.dateOfBirth.getTime()) / 31_557_600_000);
   const missing: Missing[] = validateForSubmit(inst.type, form, { age, isStandardOneEntry: isSchool(inst.type) && first.classLevel === "STD1" });
+  const payerPhone = form.payment?.payerPhone ? normalisePhone(form.payment.payerPhone) : null;
+  if (form.payment && !payerPhone && !missing.some((m) => m.section === "payment")) missing.push({ section: "payment", step: "payment", message: "payerPhone" });
 
   // study mode / campus must be one the chosen programmes and institution actually offer
   if (!isSchool(inst.type)) {
@@ -196,14 +209,26 @@ family.post("/applications/:id/submit", requireVerifiedPhone, h(async (req, res)
   }
   if (missing.length) return res.status(422).json({ error: "incomplete", missing });
 
+  // Submit and record the payment together: if the transaction ID was already used by someone else, nothing is submitted.
+  const fees = await snapshotFees(a.choices.map((c) => c.programId));
+  const reference = normaliseReference(form.payment.reference);
+  let done;
+  try {
+    [, done] = await prisma.$transaction([
+      prisma.payment.create({ data: { applicationId: a.id, provider: form.payment.provider, reference, payerPhone: payerPhone!, amountMinor: fees.totalDueMinor } }),
+      prisma.application.update({ where: { id: a.id }, data: { status: "PAYMENT_SUBMITTED", submittedAt: new Date(), form, ...fees } }),
+    ]);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return res.status(409).json({ error: "reference_already_used", step: "payment" });
+    throw e;
+  }
   if (wantsGrades) { // replaces the old standalone "ask my previous school" button
     const from = await prisma.institution.findFirst({ where: { id: form.education.previousSchoolId, status: "VERIFIED" } });
     if (from && !(await prisma.gradeRequest.count({ where: { studentId: a.studentId, fromSchoolId: from.id, status: { in: ["PENDING", "FULFILLED"] } } })))
       await prisma.gradeRequest.create({ data: { studentId: a.studentId, fromSchoolId: from.id, toSchoolId: inst.id } });
   }
-  const fees = await snapshotFees(a.choices.map((c) => c.programId));
-  const done = await prisma.application.update({ where: { id: a.id }, data: { status: "AWAITING_PAYMENT", submittedAt: new Date(), ...fees } });
-  res.json(done);
+  await reconcile(form.payment.provider, [reference]); // instant confirm if the SMS already arrived
+  res.json(await prisma.application.findUniqueOrThrow({ where: { id: a.id } }));
 }));
 
 family.post("/applications/:id/payment", requireVerifiedPhone, body(z.object({

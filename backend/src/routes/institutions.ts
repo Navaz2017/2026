@@ -171,7 +171,8 @@ institutions.get("/applications/:id", h(async (req, res) => {
   const ids = [...a.attachedCredentialIds, ...fulfilled.map((g) => g.resultCredentialId!)];
   const credentials = await prisma.credential.findMany({ where: { id: { in: ids }, studentId: a.studentId }, select: { id: true, kind: true, title: true, mime: true, createdAt: true } });
   const { attachedCredentialIds: _x, ...rest } = a;
-  res.json({ ...rest, credentials });
+  const { payment: _pay, ...formForSchool } = (rest.form ?? {}) as Record<string, unknown>; // how the applicant paid is none of the school's business
+  res.json({ ...rest, form: formForSchool, credentials });
 }));
 
 // Viewing a child's documents is sensitive: MFA required, short-lived link, always audited.

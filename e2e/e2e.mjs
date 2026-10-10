@@ -107,7 +107,7 @@ try {
   await page.locator("article, .card").filter({ hasText: "BSc Computer Science" }).getByRole("link", { name: "Apply" }).click();
   await page.waitForURL(/\/app\/apply\?draft=/, { timeout: 15000 });
   await page.waitForSelector(".stepper");
-  check("wizard has 9 steps for a university", (await page.locator(".stepper li").count()) === 9);
+  check("wizard has 10 steps for a university (payment is a step before review)", (await page.locator(".stepper li").count()) === 10);
   const ssel = page.locator("select").first();
   await ssel.selectOption({ label: "BA Economics" });
   await ssel.selectOption({ label: "Bachelor of Business Administration" });
@@ -119,7 +119,9 @@ try {
   const lab = (text) => page.locator("label.field", { hasText: text });
   const fill = async (text, v) => lab(text).first().locator("input").fill(v);
   await fill("Surname", "Phiri"); await fill("First name", "Mphatso"); await lab("Sex").locator("select").selectOption("F");
-  await page.locator('input[type=date]').fill("2005-05-05"); await fill("Home district", "Zomba"); await fill("Physical address", "Chirunga, Zomba"); await fill("Mobile number", "0999000111");
+  await page.locator('input[type=date]').fill("2005-05-05"); await fill("Home district", "Zomba"); await fill("Physical address", "Chirunga, Zomba");
+  check("personal step: no Traditional Authority and no phone number question", (await lab("Traditional Authority").count()) === 0 && (await lab("Mobile number").count()) === 0 && (await lab("Phone number").count()) === 0);
+  check("nationality is a drop-down (Malawian preselected) and date of birth a date picker", (await lab("Nationality").locator("select").inputValue()) === "Malawian" && (await page.locator('input[type=date]').count()) === 1);
   await page.getByRole("button", { name: "Save and continue" }).click();
   // education
   await page.waitForSelector("text=Qualification completed");
@@ -134,7 +136,7 @@ try {
   // guardian (prefilled from the parent's own account)
   await page.waitForSelector("text=This person is my");
   check("guardian step is prefilled from the parent account", (await lab("Full name").locator("input").inputValue()) === "Mayi Phiri");
-  await fill("Phone number", "0888222333");
+  check("guardian step does not ask the parent for a phone number again", (await lab("Phone number").count()) === 0);
   await page.getByRole("button", { name: "Save and continue" }).click();
   // study options
   await page.waitForSelector("text=Mode of study");
@@ -153,6 +155,16 @@ try {
   await page.locator('input[type=file]').setInputFiles(pdf); await page.waitForSelector("text=MSCE certificate");
   check("uploaded documents are attached automatically", (await page.locator('.card input[type=checkbox]:checked').count()) >= 2);
   await page.getByRole("button", { name: "Save and continue" }).click();
+  // payment BEFORE submitting: pick Airtel Money / Mpamba, see the number to send to, enter the transaction ID
+  await page.waitForSelector("text=First send the application fee");
+  const submitBtnEarly = await page.getByRole("button", { name: "Save and continue" });
+  await lab("Mobile money").locator("select").selectOption("AIRTEL_MONEY");
+  await page.waitForSelector("text=+265999000111");
+  check("payment step shows the amount and the number to pay to", (await page.locator("main").innerText()).includes("Total to pay") && (await page.locator("main").innerText()).includes("+265999000111"));
+  check("payer phone is prefilled with the account's number", (await lab("Phone you paid from").locator("input").inputValue()).replace(/\s/g, "").endsWith("999555001"));
+  await lab("Reference / transaction ID").locator("input").fill("BW260929.1403.PL4887");
+  void submitBtnEarly;
+  await page.getByRole("button", { name: "Save and continue" }).click();
   // review: submit is blocked until the declaration is ticked and signed
   await page.waitForSelector("text=Anything else to tell the institution");
   check("review lists the three ranked choices", (await page.locator("main").innerText()).includes("Choice 3"));
@@ -162,16 +174,16 @@ try {
   await page.locator("label.field", { hasText: "Type your full name" }).locator("input").fill("Mphatso Phiri");
   await submit.click();
   await page.waitForURL(/\/app\/family\/applications/, { timeout: 15000 });
-  await page.waitForSelector("text=Pay the application fee"); await page.waitForSelector("text=+265999000111");
+  await page.waitForSelector("text=Application submitted"); await page.waitForSelector(".badge:has-text('Checking payment')");
   const appsText = await page.locator("main").innerText();
-  check("after submit the parent is asked to pay; shows the Mpamba/Airtel number", appsText.includes("0888000222") === false && /\+265999000111|999000111/.test(appsText), appsText.slice(0, 160).replace(/\n/g, " "));
+  check("after submit the payment is already with us: 'Checking payment', no second payment form", !appsText.includes("Pay the application fee"), appsText.slice(0, 160).replace(/\n/g, " "));
   await page.screenshot({ path: `${SHOTS}/wizard-submitted.png`, fullPage: true });
 
   // ---- primary school: class level only, 6 steps, Standard 1 needs no report
   await page.goto(BASE + "/app/browse");
   await page.locator(".card").filter({ hasText: "Standard 1" }).first().getByRole("link", { name: "Apply" }).click();
   await page.waitForSelector(".stepper");
-  check("school wizard has 6 steps and a 'Class' step", (await page.locator(".stepper li").count()) === 6 && (await page.locator(".stepper").innerText()).includes("Class"));
+  check("school wizard has 7 steps and a 'Class' step", (await page.locator(".stepper li").count()) === 7 && (await page.locator(".stepper").innerText()).includes("Class"));
   check("school: choose one class level (radio), no multi-choice list", (await page.locator('input[type=radio]').count()) >= 1 && (await page.locator(".choice select").count()) === 0);
   await page.getByRole("button", { name: "Save and continue" }).click();
   await page.waitForSelector("text=Surname");
@@ -181,15 +193,19 @@ try {
   check("Standard 1: no previous-school report needed", (await page.locator("main").innerText()).includes("Standard 1 entry: no previous school report is needed."));
   check("old standalone 'ask my previous school' card is gone from My documents", true);
   await page.getByRole("button", { name: "Save and continue" }).click();
-  await page.waitForSelector("text=This person is my"); await fill("Phone number", "0888222333"); await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=This person is my"); await page.getByRole("button", { name: "Save and continue" }).click();
   await page.waitForSelector("text=Attach clear copies"); await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForSelector("text=First send the application fee");
+  await lab("Mobile money").locator("select").selectOption("MPAMBA");
+  await lab("Reference / transaction ID").locator("input").fill("DHN1368TJHT");
+  await page.getByRole("button", { name: "Save and continue" }).click();
   await page.waitForSelector("text=Anything else to tell the institution");
   await page.locator('.card input[type=checkbox]').last().check();
   await page.locator("label.field", { hasText: "Type your full name" }).locator("input").fill("Mphatso Phiri");
   await page.getByRole("button", { name: "Submit application" }).click();
   await page.waitForURL(/\/app\/family\/applications/, { timeout: 15000 });
   await page.waitForSelector("text=Standard 1");
-  check("parent now has two applications (university + primary school)", (await page.locator("main .card").filter({ hasText: "Pay the application fee" }).count()) === 2);
+  check("parent now has two applications (university + primary school), both with payment checking", (await page.locator(".badge:has-text('Checking payment')").count()) === 2);
   await page.goto(BASE + "/app/family/documents");
   check("My documents no longer has the 'ask my previous school' card", !(await page.locator("main").innerText()).includes("Ask my previous school"));
   await page.goto(BASE + "/app/browse"); await page.locator("header").getByRole("button", { name: "Chichewa" }).click(); await page.waitForSelector("text=Sakani sukulu");

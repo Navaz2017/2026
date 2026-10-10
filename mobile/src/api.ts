@@ -74,12 +74,17 @@ export async function logoutRemote() {
 
 export interface Picked { uri: string; name: string; mime: string; size?: number }
 // Direct-to-storage upload: signed URL from the API, PUT the bytes, then confirm. Needs a connection (not queued).
+const LIMIT: Record<string, number> = { "application/pdf": 10_000_000, "image/jpeg": 12_000_000, "image/png": 12_000_000 };
 export async function uploadPicked(urlPath: string, confirmPath: string, f: Picked, extra: Record<string, unknown> = {}) {
-  const bytes = await (await fetch(f.uri)).arrayBuffer();
+  if (!(f.mime in LIMIT)) throw new ApiError(400, "file_type_not_allowed");
+  let bytes: ArrayBuffer;
+  try { bytes = await (await fetch(f.uri)).arrayBuffer(); } catch { throw new ApiError(400, "upload_failed"); }
+  if (bytes.byteLength > LIMIT[f.mime]!) throw new ApiError(400, "file_too_large");
   const sha = await sha256Hex(bytes);
   const slot = await post(urlPath, { mime: f.mime, size: bytes.byteLength, ...extra });
-  const up = await timed(slot.url, { method: "PUT", headers: slot.headers, body: bytes }, 120_000).catch(() => { throw new ApiError(0, "network"); });
-  if (!up.ok) throw new ApiError(up.status, "internal");
+  let up: Response;
+  try { up = await timed(slot.url, { method: "PUT", headers: slot.headers, body: bytes }, 120_000); } catch { throw new ApiError(0, "upload_failed"); }
+  if (!up.ok) throw new ApiError(up.status, "upload_failed");
   return post(confirmPath, { key: slot.key, sha256: sha, mime: f.mime, size: bytes.byteLength, ...extra });
 }
 

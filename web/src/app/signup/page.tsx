@@ -53,7 +53,7 @@ export default function Signup() {
           <Field label={t("auth.contactEmail")}><input name="contactEmail" type="email" required /></Field>
         </>}
         <Field label={t("common.password")} hint={t("auth.passwordHelp")}><input name="password" type="password" required minLength={10} autoComplete="new-password" /></Field>
-        <label className="check"><input name="consent" type="checkbox" required /><span>{t("auth.consent")}</span></label>
+        <label className="check"><input name="consent" type="checkbox" required /><span>{t(role === "PARENT" ? "auth.consent" : "auth.consentStudent")}</span></label>
         <Msg kind="err">{err}</Msg>
         <Btn busy={busy} style={{ width: "100%" }}>{t("auth.signUp")}</Btn>
         <p>{t("auth.haveAccount")} <Link href="/login">{t("auth.signIn")}</Link></p>

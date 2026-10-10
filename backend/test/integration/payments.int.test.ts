@@ -41,7 +41,7 @@ async function newApplication(feeMinor = 1_000_000) {
   const user = await prisma.user.create({ data: { email: `s${n}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "STUDENT", fullName: "S", student: { create: { fullName: "S", dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
   const token = signAccess({ sub: user.id, role: "STUDENT" });
   const admin = await prisma.user.create({ data: { email: `a${n}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "INSTITUTION_ADMIN", fullName: "A", institutionId: inst.id } });
-  const a = await submitApplication((m, p, t, b) => fetch(`${base}/v1${p}`, { method: m, headers: { "Content-Type": "application/json", ...(t && { Authorization: `Bearer ${t}` }) }, body: b === undefined ? undefined : JSON.stringify(b) }), token, user.student!.id, [prog.id]);
+  const a = await submitApplication((m, p, t, b) => fetch(`${base}/v1${p}`, { method: m, headers: { "Content-Type": "application/json", ...(t && { Authorization: `Bearer ${t}` }) }, body: b === undefined ? undefined : JSON.stringify(b) }), token, user.student!.id, [prog.id], { awaitingPayment: true });
   return { ...a, token, adminId: admin.id, studentUserId: user.id };
 }
 const pay = (a: { id: string; token: string }, provider: string, reference: string, payerPhone = "0999111222") =>

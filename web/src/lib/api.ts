@@ -40,13 +40,30 @@ export const put = <T = any>(path: string, body: unknown) => api<T>(path, { meth
 export const patch = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 export const del = <T = any>(path: string) => api<T>(path, { method: "DELETE" });
 
+// Phone photos are often 5-10 MB. Shrink big images (longest side 2400 px, JPEG) before sending: faster on slow networks, and under the limit.
+async function shrinkImage(file: File): Promise<File> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 1_500_000) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob: Blob | null = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+    return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
+  } catch { return file; }
+}
+const ALLOWED_UPLOAD = ["application/pdf", "image/jpeg", "image/png"];
+
 // Direct-to-storage upload: ask the API for a signed URL, PUT the bytes, then tell the API about the stored file.
-export async function uploadFile(urlPath: string, confirmPath: string, file: File, extra: Record<string, unknown> = {}) {
+export async function uploadFile(urlPath: string, confirmPath: string, file0: File, extra: Record<string, unknown> = {}) {
+  const file = await shrinkImage(file0);
+  if (!ALLOWED_UPLOAD.includes(file.type)) throw new ApiError(400, "file_type_not_allowed"); // e.g. iPhone HEIC photos
   const slot = await post(urlPath, { mime: file.type, size: file.size, ...extra });
   const buf = await file.arrayBuffer();
   const sha = await sha256Hex(buf);
-  const put = await fetch(slot.url, { method: "PUT", headers: slot.headers, body: buf });
-  if (!put.ok) throw new ApiError(put.status, "internal");
+  let put: Response;
+  try { put = await fetch(slot.url, { method: "PUT", headers: slot.headers, body: buf }); } catch { throw new ApiError(0, "upload_failed"); }
+  if (!put.ok) throw new ApiError(put.status, "upload_failed");
   return post(confirmPath, { key: slot.key, sha256: sha, mime: file.type, size: file.size, ...extra });
 }
 

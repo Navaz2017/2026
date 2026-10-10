@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Linking } from "react-native";
 import { api, uploadPicked } from "../src/api";
-import { DOC_KINDS, pickFile } from "../src/files";
+import { DOC_KINDS, pickFile, pickPhoto } from "../src/files";
 import { useT } from "../src/i18n";
 import { useResource } from "../src/offline";
 import { Btn, Card, Empty, Field, Loading, Msg, P, Screen, Select, dt, useBusy } from "../src/ui";
@@ -21,7 +21,12 @@ export default function Documents() {
         <Select label={t("fam.docKind")} value={kind} onChange={setKind} required options={DOC_KINDS.map((k): [string, string] => [k, t(`dockind.${k}`)])} />
         <Field label={t("fam.docTitle")} value={title} onChange={setTitle} maxLength={120} />
         {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
-        <Btn testID="pick" label={busy ? t("common.uploading") : t("common.chooseFile")} busy={busy} disabled={!sid} onPress={() => run(async () => {
+        <Btn testID="photo" label={t("m.photo")} busy={busy} disabled={!sid} onPress={() => run(async () => {
+          const f = await pickPhoto(); if (!f || !sid) return;
+          await uploadPicked(`/me/students/${sid}/credentials/upload-url`, `/me/students/${sid}/credentials`, f, { kind, title: title || t(`dockind.${kind}`) });
+          setTitle(""); docs.reload();
+        }, t("common.saved"))} />
+        <Btn testID="pick" kind="ghost" label={busy ? t("common.uploading") : t("m.chooseFileOrPhoto")} busy={busy} disabled={!sid} onPress={() => run(async () => {
           const f = await pickFile(); if (!f || !sid) return;
           await uploadPicked(`/me/students/${sid}/credentials/upload-url`, `/me/students/${sid}/credentials`, f, { kind, title: title || t(`dockind.${kind}`) });
           setTitle(""); docs.reload();

@@ -33,7 +33,7 @@ async function applicant(s: Awaited<ReturnType<typeof school>>) {
   const u = await prisma.user.create({ data: { email: `ap${i}@x.mw`, passwordHash: "x", phoneVerifiedAt: new Date(), role: "STUDENT", fullName: `Applicant ${i}`, student: { create: { fullName: `Applicant ${i}`, dateOfBirth: new Date("2005-01-01") } } }, include: { student: true } });
   const token = signAccess({ sub: u.id, role: "STUDENT" });
   const a = await submitApplication(call, token, u.student!.id, [s.prog.id]);
-  await prisma.payment.create({ data: { applicationId: a.id, provider: "MPAMBA", reference: `REF${i}LTR${i}XY`, payerPhone: "+265881000000", amountMinor: a.totalDueMinor, status: "CONFIRMED", confirmedAt: new Date() } });
+  await prisma.payment.updateMany({ where: { applicationId: a.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
   await prisma.application.update({ where: { id: a.id }, data: { status: "SUBMITTED" } });
   return { id: a.id as string, token, userId: u.id };
 }

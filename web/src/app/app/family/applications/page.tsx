@@ -39,7 +39,7 @@ export default function MyApplications() {
   const { busy, msg, run } = useBusy();
   return (
     <Page title={t("nav.myApps")}>
-      {justSubmitted && <Msg kind="ok">{t("fam.started")}</Msg>}
+      {justSubmitted && <Msg kind="ok">{t("wiz.submitted")}</Msg>}
       <Loading error={error} loading={loading} />
       {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
       {data?.length === 0 && <Empty />}

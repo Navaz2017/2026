@@ -101,12 +101,13 @@ try {
 
   // ---- 5. apply: the whole wizard
   await page.getByTestId(/^apply-/).first().click(); // first listed programme: BSc Computer Science
-  await page.getByText(T("wiz.stepOf", { n: 1, total: 9 }), { exact: false }).first().waitFor({ timeout: 20000 });
-  check("application draft created, wizard has 9 steps", true);
+  await page.getByText(T("wiz.stepOf", { n: 1, total: 10 }), { exact: false }).first().waitFor({ timeout: 20000 });
+  check("application draft created, wizard has 10 steps (payment before review)", true);
   await next();
   await tid("surname").fill("Mobile"); await tid("firstName").fill("Chikondi");
   await radio(T("p.male")).click();
-  await tid("dob").fill("2007-04-02"); await tid("district").fill("Zomba"); await tid("address").fill("Chirunga, Zomba"); await tid("phone").fill("0999111222");
+  await tid("dob").fill("2007-04-02"); await tid("district").fill("Zomba"); await tid("address").fill("Chirunga, Zomba");
+  check("personal step: no Traditional Authority, no phone question; nationality is a list; DOB is a date picker", (await page.getByLabel(T("p.ta")).count()) === 0 && (await page.getByLabel(T("p.phone")).count()) === 0 && (await page.getByRole("button", { name: T("p.nationality"), exact: true }).first().innerText()).includes("Malawian") && (await tid("dob").getAttribute("type")) === "date");
   await page.screenshot({ path: `${SHOTS}/m-wizard-personal.png`, fullPage: true });
   await next();
   await pick(T("ed.level"), T("qual.MSCE"));
@@ -145,22 +146,25 @@ try {
   }
   check("documents uploaded from the phone and attached", true);
   await next();
+  // payment BEFORE submitting
+  await page.getByText(T("wiz.payIntro")).waitFor();
+  await radio(T("provider.AIRTEL_MONEY")).click();
+  await page.getByText("+265999000111").waitFor({ timeout: 10000 });
+  check("payment step shows the amount and the number to pay to", (await page.locator("body").innerText()).includes("MK 13,000"));
+  check("payer phone prefilled with the account's number", (await tid("payPhone").inputValue()).replace(/\s/g, "").endsWith("999555777"));
+  const REF = "TID" + Date.now().toString().slice(-9);
+  await tid("payRef").fill(REF);
+  await page.screenshot({ path: `${SHOTS}/m-pay.png`, fullPage: true });
+  await next();
   // review + submit
   await page.getByText(T("rv.noCash")).waitFor();
   await tid("signature").fill("Chikondi Mobile");
   await page.getByRole("checkbox", { name: new RegExp(T("rv.declaration").slice(0, 20)) }).click();
   await page.screenshot({ path: `${SHOTS}/m-review.png`, fullPage: true });
   await tid("submit").click();
-  await page.getByText(T("st.app.AWAITING_PAYMENT")).waitFor({ timeout: 20000 });
-  check("submitted: application waits for payment", true);
-
-  // ---- 6. pay (Airtel Money reference)
-  await tid("reference").fill("TID" + Date.now().toString().slice(-9));
-  await tid("payerPhone").fill("0999111222");
-  await page.screenshot({ path: `${SHOTS}/m-pay.png`, fullPage: true });
-  await tid("paid").click();
+  await page.getByText(T("st.app.PAYMENT_SUBMITTED")).first().waitFor({ timeout: 20000 });
   await page.getByText(T("fam.afterPay")).first().waitFor({ timeout: 15000 });
-  check("payment reference sent", true);
+  check("submitted together with the payment: 'Checking payment', no separate pay form", (await page.getByTestId("reference").count()) === 0);
 
   // ---- 6b. the owner confirms the payment: the phone hears about it LIVE (no refresh)
   await page.goto(BASE + "/applications");
@@ -171,7 +175,7 @@ try {
   const ownerTok = (await (await fetch(`${API}/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: "owner@enrolla.test", password: "Passw0rd-demo1", code: totp() }) })).json()).accessToken;
   const oh = { Authorization: `Bearer ${ownerTok}`, "Content-Type": "application/json" };
   const pays = await (await fetch(`${API}/v1/admin/payments?status=PENDING`, { headers: oh })).json();
-  const mine = pays.find((p) => p.payerPhone?.endsWith("999111222"));
+  const mine = pays.find((p) => p.reference === REF.toUpperCase());
   const conf = await fetch(`${API}/v1/admin/payments/${mine.id}/manual-confirm`, { method: "POST", headers: oh, body: JSON.stringify({ reason: "e2e: SMS did not arrive, checked the Airtel statement" }) });
   check("owner confirms the payment", conf.ok, String(conf.status));
   await page.getByTestId("live-toast").waitFor({ timeout: 10000 });

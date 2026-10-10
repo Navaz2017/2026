@@ -7,17 +7,19 @@ fields only one form asked for are optional.
 | Step | Fields | Source |
 |---|---|---|
 | Programmes / Class | up to **3 ranked choices at ONE institution** (colleges/universities); exactly **one class level** (schools) | MU "rank in order of preference"; limited to 3 by product rule (Daeyang allows 11) |
-| About you | surname, first/middle name, sex, date of birth, nationality, national ID/passport, home district, T/A, village, physical + postal address, mobile, email, religion (optional) | all four forms |
+| About you | surname, first/middle name, sex, date of birth, nationality (chosen from a list), national ID/passport, home district, village, physical + postal address, email, religion (optional). *Date of birth is a date picker; Traditional Authority and the phone number are no longer asked (the phone is the one the account signed up with).* | all four forms |
 | Special needs | disability yes/no, details, assistance needed | Daeyang, MU |
 | Education | qualification (MSCE, IGCSE, A-Level, AS, COSC, Matric, IB, JCE, PSLCE), school, year, centre/candidate no., points, subjects + grades (up to 12), re-sit years, other qualifications, disciplined before? | MCA, MU, Daeyang |
 | Current status | employed / self-employed / unemployed / studying, employer, position, experience (colleges only) | MU, Daeyang |
-| Parent / guardian | relationship (parent, guardian, next of kin), name, phone, email, address, occupation | MU, Daeyang, MCA |
+| Parent / guardian | relationship (parent, guardian, next of kin), name, phone (not asked of a parent: it is their account's number), email, address, occupation | MU, Daeyang, MCA |
 | Study options | mode (full-time, part-time, weekend, evening, ODeL), campus, entry level, willing to be re-directed | MCA, MU, Daeyang |
 | Fees & sponsor | self / parent / employer / **HESLGB loan** / other, sponsor contact; how you heard about us | MCA, MU, Daeyang |
 | Documents | national ID, certificate/results, passport photo, sponsor letter | all four (checklists) |
 | Review | declaration + typed signature, optional statement | all four |
 
 Deliberately **not** copied: "application number" and "office use only" boxes, counsellor sign-off, and bank deposit slips
+| **Payment** (before review) | provider (Airtel Money / TNM Mpamba), transaction ID, the phone the money was sent from (prefilled) | the application cannot be submitted without it; recorded together with the submit and matched with the incoming SMS |
+
 (payment is done in-app by Airtel Money / TNM Mpamba, which also stops people paying agents in cash — a warning shown on the review step).
 
 ## Rules

@@ -1,17 +1,18 @@
 import { useRouter } from "expo-router";
+import { useSession } from "./session";
 import React, { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { ApiError, put, post, uploadPicked } from "./api";
-import { ACADEMIC_KINDS, DOC_KINDS, pickFile } from "./files";
-import { DATE_RE, HEARD, MODES, OTHER_QUALS, QUALS, clean } from "./forms";
+import { ACADEMIC_KINDS, DOC_KINDS, pickFile, pickPhoto } from "./files";
+import { DATE_RE, HEARD, MODES, NATIONALITIES, OTHER_QUALS, QUALS, clean } from "./forms";
 import { useT } from "./i18n";
 import { cacheSet, flushOutbox, overlayApplication, pendingFor, useResource, writeOrQueue } from "./offline";
 import { ProgramFacts, isSchool } from "./school";
-import { Badge, Btn, C, Card, Check, Field, LinkBtn, Loading, Msg, P, Row, Select, dt, mk, useBusy, useErr } from "./ui";
+import { Badge, Btn, C, Card, Check, DateField, Field, LinkBtn, Loading, Msg, P, Row, Select, dt, mk, useBusy, useErr } from "./ui";
 
-type Step = "programmes" | "personal" | "education" | "status" | "guardian" | "study" | "sponsor" | "documents" | "review";
-const STEPS_COLLEGE: Step[] = ["programmes", "personal", "education", "status", "guardian", "study", "sponsor", "documents", "review"];
-const STEPS_SCHOOL: Step[] = ["programmes", "personal", "education", "guardian", "documents", "review"];
+type Step = "programmes" | "personal" | "education" | "status" | "guardian" | "study" | "sponsor" | "documents" | "payment" | "review";
+const STEPS_COLLEGE: Step[] = ["programmes", "personal", "education", "status", "guardian", "study", "sponsor", "documents", "payment", "review"];
+const STEPS_SCHOOL: Step[] = ["programmes", "personal", "education", "guardian", "documents", "payment", "review"];
 
 interface Ctx { app: any; reload: () => void; saved: (name: string, body: unknown) => void; next: () => void; back: () => void; first: boolean; school: boolean; goto: (s: string) => void; exit: () => void; queuedNote: (q: boolean) => void }
 
@@ -96,7 +97,7 @@ function Personal({ c }: { c: Ctx }) {
   const prof = app.form?.personal ?? app.student.profile ?? {};
   const parts = (app.student.fullName ?? "").split(" ");
   const epoch = String(app.student.dateOfBirth).startsWith("1970");
-  const { v, set } = useFields<any>({ surname: prof.surname ?? (parts.length > 1 ? parts[parts.length - 1] : ""), firstName: prof.firstName ?? parts[0] ?? "", middleName: prof.middleName ?? "", gender: prof.gender ?? "", dateOfBirth: (prof.dateOfBirth ?? (epoch ? "" : app.student.dateOfBirth) ?? "").slice(0, 10), nationality: prof.nationality ?? "Malawian", nationalId: prof.nationalId ?? "", homeDistrict: prof.homeDistrict ?? "", traditionalAuthority: prof.traditionalAuthority ?? "", village: prof.village ?? "", religion: prof.religion ?? "", physicalAddress: prof.physicalAddress ?? "", postalAddress: prof.postalAddress ?? "", phone: prof.phone ?? "", email: prof.email ?? "" });
+  const { v, set } = useFields<any>({ surname: prof.surname ?? (parts.length > 1 ? parts[parts.length - 1] : ""), firstName: prof.firstName ?? parts[0] ?? "", middleName: prof.middleName ?? "", gender: prof.gender ?? "", dateOfBirth: (prof.dateOfBirth ?? (epoch ? "" : app.student.dateOfBirth) ?? "").slice(0, 10), nationality: prof.nationality ?? "Malawian", nationalId: prof.nationalId ?? "", homeDistrict: prof.homeDistrict ?? "", village: prof.village ?? "", religion: prof.religion ?? "", physicalAddress: prof.physicalAddress ?? "", postalAddress: prof.postalAddress ?? "", email: prof.email ?? "" });
   const sn = useFields<any>({ hasDisability: app.form?.specialNeeds?.hasDisability ?? false, details: app.form?.specialNeeds?.details ?? "", assistance: app.form?.specialNeeds?.assistance ?? "" });
   const S = useSection(c, "personal"), N = useSection(c, "specialNeeds");
   const save = async (partial = false) => {
@@ -109,15 +110,13 @@ function Personal({ c }: { c: Ctx }) {
       <Field testID="firstName" label={t("p.firstName")} required value={v.firstName} onChange={set("firstName")} />
       <Field label={t("p.middleName")} value={v.middleName} onChange={set("middleName")} />
       <Select label={t("p.gender")} required value={v.gender} onChange={set("gender")} options={[["M", t("p.male")], ["F", t("p.female")]]} />
-      <Field testID="dob" label={t("p.dob")} hint={t("m.dateHint")} required value={v.dateOfBirth} onChange={set("dateOfBirth")} placeholder="2008-03-25" keyboardType="numbers-and-punctuation" />
-      <Field label={t("p.nationality")} required value={v.nationality} onChange={set("nationality")} />
+      <DateField testID="dob" label={t("p.dob")} required value={v.dateOfBirth} onChange={set("dateOfBirth")} />
+      <Select label={t("p.nationality")} required value={v.nationality} onChange={set("nationality")} options={(NATIONALITIES.includes(v.nationality) || !v.nationality ? NATIONALITIES : [v.nationality, ...NATIONALITIES]).map((n): [string, string] => [n, n])} />
       <Field label={t("p.nationalId")} value={v.nationalId} onChange={set("nationalId")} autoCapitalize="characters" />
       <Field testID="district" label={t("p.homeDistrict")} required value={v.homeDistrict} onChange={set("homeDistrict")} />
-      <Field label={t("p.ta")} value={v.traditionalAuthority} onChange={set("traditionalAuthority")} />
       <Field label={t("p.village")} value={v.village} onChange={set("village")} />
       <Field testID="address" label={t("p.address")} required value={v.physicalAddress} onChange={set("physicalAddress")} />
       <Field label={t("p.postal")} value={v.postalAddress} onChange={set("postalAddress")} />
-      <Field testID="phone" label={t("p.phone")} required value={v.phone} onChange={set("phone")} keyboardType="phone-pad" />
       <Field label={t("p.email")} value={v.email} onChange={set("email")} keyboardType="email-address" autoCapitalize="none" />
       <Field label={t("p.religion")} value={v.religion} onChange={set("religion")} />
       <Text style={{ fontSize: 18, fontWeight: "700", color: C.ink, marginVertical: 8 }}>{t("sn.title")}</Text>
@@ -217,6 +216,8 @@ function Status({ c }: { c: Ctx }) {
 // ---------------------------------------------------------------- parent / guardian
 function Guardian({ c }: { c: Ctx }) {
   const { t } = useT();
+  const { user } = useSession();
+  const isParent = user?.role === "PARENT"; // a parent applying for a child IS the guardian: their phone is the account's
   const par = c.app.student.parent;
   const g0 = c.app.form?.guardian ?? (par ? { relationship: "PARENT", name: par.user.fullName, phone: par.user.phone ?? "", email: par.user.email ?? "", occupation: par.occupation } : {});
   const { v, set } = useFields<any>({ relationship: g0.relationship ?? "PARENT", name: g0.name ?? "", phone: g0.phone ?? "", email: g0.email ?? "", address: g0.address ?? "", village: g0.village ?? "", district: g0.district ?? "", occupation: g0.occupation ?? "" });
@@ -225,14 +226,14 @@ function Guardian({ c }: { c: Ctx }) {
     <View>
       <Select label={t("g.relationship")} required value={v.relationship} onChange={set("relationship")} options={["PARENT", "GUARDIAN", "NEXT_OF_KIN"].map((k): [string, string] => [k, t(`rel.${k}`)])} />
       <Field testID="gname" label={t("g.name")} required value={v.name} onChange={set("name")} />
-      <Field testID="gphone" label={t("g.phone")} required value={v.phone} onChange={set("phone")} keyboardType="phone-pad" />
+      {!isParent && <Field testID="gphone" label={t("g.phone")} required value={v.phone} onChange={set("phone")} keyboardType="phone-pad" />}
       <Field label={t("g.email")} value={v.email} onChange={set("email")} keyboardType="email-address" autoCapitalize="none" />
       <Field label={t("g.occupation")} value={v.occupation} onChange={set("occupation")} />
       <Field label={t("g.address")} value={v.address} onChange={set("address")} />
       <Field label={t("g.village")} value={v.village} onChange={set("village")} />
       <Field label={t("g.district")} value={v.district} onChange={set("district")} />
       {S.msg && <Msg kind={S.msg.kind}>{S.msg.text}</Msg>}
-      <Nav busy={S.busy} c={c} onNext={() => S.run(async () => { await S.save(clean(v)); c.next(); })} onExit={() => S.run(async () => { await S.save(clean(v), true); c.exit(); })} />
+      <Nav busy={S.busy} c={c} onNext={() => S.run(async () => { await S.save(clean(isParent ? { ...v, phone: "" } : v)); c.next(); })} onExit={() => S.run(async () => { await S.save(clean(isParent ? { ...v, phone: "" } : v), true); c.exit(); })} />
     </View>
   );
 }
@@ -305,7 +306,12 @@ function Documents({ c }: { c: Ctx }) {
       </Card>
       <Card title={t("common.upload")}>
         <Select label={t("doc.kind")} required value={kind} onChange={setKind} options={DOC_KINDS.map((k): [string, string] => [k, t(`dockind.${k}`)])} />
-        <Btn testID="pick" kind="ghost" label={upBusy ? t("common.uploading") : t("common.chooseFile")} busy={upBusy} onPress={() => upRun(async () => {
+        <Btn testID="photo" label={t("m.photo")} busy={upBusy} onPress={() => upRun(async () => {
+          const f = await pickPhoto(); if (!f) return;
+          const made = await uploadPicked(`/me/students/${app.studentId}/credentials/upload-url`, `/me/students/${app.studentId}/credentials`, f, { kind, title: t(`dockind.${kind}`) });
+          setSel((p) => [...p, made.id]); creds.reload();
+        })} />
+        <Btn testID="pick" kind="ghost" label={upBusy ? t("common.uploading") : t("m.chooseFileOrPhoto")} busy={upBusy} onPress={() => upRun(async () => {
           const f = await pickFile(); if (!f) return;
           const made = await uploadPicked(`/me/students/${app.studentId}/credentials/upload-url`, `/me/students/${app.studentId}/credentials`, f, { kind, title: t(`dockind.${kind}`) });
           setSel((p) => [...p, made.id]); creds.reload();
@@ -319,6 +325,31 @@ function Documents({ c }: { c: Ctx }) {
         if (r.queued) setMsg({ kind: "info", text: t("m.queued") });
         c.next();
       })} onExit={c.exit} />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------- payment (BEFORE submitting; needs a connection to look up the number)
+function Payment({ c }: { c: Ctx }) {
+  const { t } = useT();
+  const { user } = useSession();
+  const { app } = c;
+  const info = useResource<any>("/public/payment-info");
+  const p0 = app.form?.payment ?? {};
+  const { v, set } = useFields<any>({ provider: p0.provider ?? "", reference: p0.reference ?? "", payerPhone: p0.payerPhone ?? user?.phone ?? "" });
+  const S = useSection(c, "payment");
+  const body = () => ({ provider: v.provider, reference: v.reference.trim(), payerPhone: v.payerPhone.trim() });
+  return (
+    <View>
+      <P>{t("wiz.payIntro")}</P>
+      <Msg kind="info">{t("fam.totalToPay")}: {mk(app.totalDueMinor)}</Msg>
+      <Select label={t("fam.provider")} required value={v.provider} onChange={set("provider")} options={["AIRTEL_MONEY", "MPAMBA"].map((k): [string, string] => [k, t(`provider.${k}`)])} />
+      {v.provider ? <><P muted>{t("fam.sendTo")}</P><Text selectable style={{ fontSize: 24, fontWeight: "700", color: C.navy, marginBottom: 12 }}>{info.data?.[v.provider] ?? "—"}</Text></> : null}
+      <Field testID="payRef" label={t("fam.reference")} hint={t("wiz.tidHelp")} required value={v.reference} onChange={set("reference")} autoCapitalize="characters" maxLength={30} />
+      <Field testID="payPhone" label={t("fam.payerPhone")} required value={v.payerPhone} onChange={set("payerPhone")} keyboardType="phone-pad" placeholder="0999 123 456" />
+      <P muted>{t("wiz.payCheck")}</P>
+      {S.msg && <Msg kind={S.msg.kind}>{S.msg.text}</Msg>}
+      <Nav busy={S.busy} c={c} onNext={() => S.run(async () => { await S.save(body()); c.next(); })} onExit={() => S.run(async () => { await S.save(clean(body()), true); c.exit(); })} />
     </View>
   );
 }
@@ -348,12 +379,13 @@ function Summary({ form, onEdit }: { form: any; onEdit: (s: string) => void }) {
       {st && <Sec title={t("step.status")} step="status"><Row k={t("st.current")} v={t(`cur.${st.current}`)} /><Row k={t("st.employer")} v={st.employer} /></Sec>}
       {g && <Sec title={t("step.guardian")} step="guardian"><Row k={t(`rel.${g.relationship}`)} v={g.name} /><Row k={t("g.phone")} v={g.phone} /></Sec>}
       {s && <Sec title={t("step.study")} step="study"><Row k={t("sy.mode")} v={s.mode && t(`mode.${s.mode}`)} /><Row k={t("sy.campus")} v={s.campus} /></Sec>}
+      {f.payment && <Sec title={t("step.payment")} step="payment"><Row k={t("fam.provider")} v={t(`provider.${f.payment.provider}`)} /><Row k={t("fam.reference")} v={f.payment.reference} /></Sec>}
       {sp && <Sec title={t("step.sponsor")} step="sponsor"><Row k={t("sp.type")} v={t(`spt.${sp.type}`)} /><Row k={t("sp.name")} v={sp.name} /></Sec>}
     </View>
   );
 }
 
-const STEP_NAME: Record<string, string> = { programmes: "step.programmes", personal: "step.personal", education: "step.education", status: "step.status", guardian: "step.guardian", study: "step.study", sponsor: "step.sponsor", documents: "step.documents", review: "step.review" };
+const STEP_NAME: Record<string, string> = { programmes: "step.programmes", personal: "step.personal", education: "step.education", status: "step.status", guardian: "step.guardian", study: "step.study", sponsor: "step.sponsor", documents: "step.documents", payment: "step.payment", review: "step.review" };
 
 function Review({ c }: { c: Ctx }) {
   const { t } = useT();
@@ -375,7 +407,8 @@ function Review({ c }: { c: Ctx }) {
       await post(`/me/applications/${app.id}/submit`);
       router.replace(`/application/${app.id}`);
     } catch (e) {
-      if (e instanceof ApiError && e.code === "incomplete") {
+      if (e instanceof ApiError && e.code === "reference_already_used") { setMsg({ kind: "err", text: err(e) }); c.goto("payment"); }
+      else if (e instanceof ApiError && e.code === "incomplete") {
         const steps = [...new Set<string>((e.body?.missing ?? []).map((m: any) => m.step))];
         setMsg({ kind: "err", text: t("rv.missing", { steps: steps.map((s) => t(STEP_NAME[s] ?? s)).join(", ") }) });
         if (steps[0]) c.goto(steps[0]);
@@ -428,7 +461,7 @@ export function Wizard({ appId }: { appId: string }) {
   const cur = steps[i]!;
   const label = (s: Step) => t(s === "programmes" && school ? "step.class" : `step.${s}`);
   const ctx: Ctx = { app, reload: res.reload, saved, school, first: i === 0, queuedNote: () => {}, next: () => setI((x) => Math.min(x + 1, steps.length - 1)), back: () => setI((x) => Math.max(0, x - 1)), goto: (s) => { const k = steps.indexOf(s as Step); if (k >= 0) setI(k); }, exit: () => router.replace("/applications") };
-  const Body = { programmes: Programmes, personal: Personal, education: Education, status: Status, guardian: Guardian, study: Study, sponsor: Sponsor, documents: Documents, review: Review }[cur];
+  const Body = { programmes: Programmes, personal: Personal, education: Education, status: Status, guardian: Guardian, study: Study, sponsor: Sponsor, documents: Documents, payment: Payment, review: Review }[cur];
   return (
     <View>
       <View style={{ flexDirection: "row", gap: 4, marginBottom: 8 }} accessibilityLabel={t("wiz.stepOf", { n: i + 1, total: steps.length })}>

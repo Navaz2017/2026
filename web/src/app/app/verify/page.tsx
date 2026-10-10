@@ -24,7 +24,7 @@ export default function Verify() {
     <Page title={t("auth.verifyTitle")}>
       <Card>
         <p>{t("auth.verifyIntro", { phone: user.phone ?? "" })}</p>
-        {sentVia && <p className="muted">{t("auth.sentVia", { channel: t(`auth.ch.${sentVia}`) })}</p>}
+        {sentVia && sentVia !== "dev" && <p className="muted">{t("auth.sentVia", { channel: t(`auth.ch.${sentVia}`) })}</p>}
         {dev && <Msg kind="warn">{t("auth.devCode", { code: dev })}</Msg>}
         <form onSubmit={async (e) => { e.preventDefault(); if (await run(() => post("/auth/phone/verify", { code }))) { try { sessionStorage.removeItem("devCode"); } catch {} await reload(); } }}>
           <Field label={t("auth.code")}><input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" required autoFocus style={{ letterSpacing: ".3em", fontSize: "1.4rem" }} /></Field>

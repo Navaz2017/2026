@@ -12,10 +12,11 @@ export const personal = z.object({
   surname: req(80), firstName: req(80), middleName: txt(80).optional(),
   gender: z.enum(["M", "F"]), dateOfBirth: z.coerce.date(),
   nationality: req(60), nationalId: txt(40).optional(), // ID or passport number
-  homeDistrict: req(60), traditionalAuthority: txt(80).optional(), village: txt(80).optional(),
+  homeDistrict: req(60), village: txt(80).optional(),
   religion: txt(60).optional(), // optional: not an admission criterion
   physicalAddress: req(200), postalAddress: txt(200).optional(),
-  phone, email: z.string().email().optional().or(z.literal("")),
+  phone: phone.optional(), // not asked: taken from the phone number the account signed up with
+  email: z.string().email().optional().or(z.literal("")),
 });
 
 export const specialNeeds = z.object({ hasDisability: z.boolean(), details: txt(500).optional(), assistance: txt(500).optional() });
@@ -59,19 +60,27 @@ export const sponsor = z.object({
 export const HEARD = ["NEWSPAPER", "RADIO", "TV", "FRIEND", "SOCIAL_MEDIA", "WEBSITE", "OPEN_DAY", "REPRESENTATIVE", "LETTER", "POSTER", "EX_STUDENT", "OTHER"] as const;
 export const heardAbout = z.object({ channels: z.array(z.enum(HEARD)).max(12), other: txt(120).optional() });
 
+// The application fee: how it was paid and the transaction ID from the mobile-money message. Entered BEFORE submitting;
+// the reference is matched with the incoming SMS afterwards.
+export const payment = z.object({
+  provider: z.enum(["AIRTEL_MONEY", "MPAMBA"]),
+  reference: z.string().trim().min(6).max(30).regex(/^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*\.?$/),
+  payerPhone: z.string().trim().min(7).max(20), // the phone the money was sent from (prefilled with the account's number)
+});
+
 export const declaration = z.object({ accepted: z.literal(true), signatureName: req(120) });
 
-export const SECTIONS = { personal, specialNeeds, education, status, guardian, study, sponsor, heardAbout, declaration } as const;
+export const SECTIONS = { personal, specialNeeds, education, status, guardian, study, sponsor, heardAbout, payment, declaration } as const;
 export type SectionName = keyof typeof SECTIONS;
 
 // Which sections each kind of institution needs before an application can be submitted, and which step the UI should open.
 export function requiredSections(instType: string): SectionName[] {
   return isSchool(instType)
-    ? ["personal", "specialNeeds", "education", "guardian", "declaration"]
-    : ["personal", "specialNeeds", "education", "status", "guardian", "study", "sponsor", "declaration"];
+    ? ["personal", "specialNeeds", "education", "guardian", "payment", "declaration"]
+    : ["personal", "specialNeeds", "education", "status", "guardian", "study", "sponsor", "payment", "declaration"];
 }
 
-export const SECTION_STEP: Record<SectionName, string> = { personal: "personal", specialNeeds: "personal", education: "education", status: "status", guardian: "guardian", study: "study", sponsor: "sponsor", heardAbout: "sponsor", declaration: "review" };
+export const SECTION_STEP: Record<SectionName, string> = { personal: "personal", specialNeeds: "personal", education: "education", status: "status", guardian: "guardian", study: "study", sponsor: "sponsor", heardAbout: "sponsor", payment: "payment", declaration: "review" };
 
 export interface Missing { section: string; step: string; message: string }
 

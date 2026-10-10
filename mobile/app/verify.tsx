@@ -21,7 +21,7 @@ export default function Verify() {
     <Screen>
       <Card>
         <P>{t("auth.verifyIntro", { phone: user.phone ?? "" })}</P>
-        {via ? <P muted>{t("auth.sentVia", { channel: t(`auth.ch.${via}`) })}</P> : null}
+        {via && via !== "dev" ? <P muted>{t("auth.sentVia", { channel: t(`auth.ch.${via}`) })}</P> : null}
         {dev ? <Msg kind="warn">{t("auth.devCode", { code: dev })}</Msg> : null}
         <Field testID="code" label={t("auth.code")} value={code} onChange={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))} keyboardType="number-pad" autoComplete="one-time-code" />
         {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}

@@ -10,11 +10,11 @@ import { Area, Check, Sel, Txt, clean, useFields } from "@/components/Fields";
 import { FormSummary } from "@/components/FormSummary";
 import { ProgramFacts } from "@/components/SchoolView";
 import { Icon } from "@/components/Icon";
-import { ACADEMIC_KINDS, DOC_KINDS, HEARD, MODES, OTHER_QUALS, QUALS, isSchool, levelLabel } from "@/lib/forms";
+import { ACADEMIC_KINDS, DOC_KINDS, HEARD, MODES, NATIONALITIES, OTHER_QUALS, QUALS, isSchool, levelLabel } from "@/lib/forms";
 
-type Step = "programmes" | "personal" | "education" | "status" | "guardian" | "study" | "sponsor" | "documents" | "review";
-const STEPS_COLLEGE: Step[] = ["programmes", "personal", "education", "status", "guardian", "study", "sponsor", "documents", "review"];
-const STEPS_SCHOOL: Step[] = ["programmes", "personal", "education", "guardian", "documents", "review"];
+type Step = "programmes" | "personal" | "education" | "status" | "guardian" | "study" | "sponsor" | "documents" | "payment" | "review";
+const STEPS_COLLEGE: Step[] = ["programmes", "personal", "education", "status", "guardian", "study", "sponsor", "documents", "payment", "review"];
+const STEPS_SCHOOL: Step[] = ["programmes", "personal", "education", "guardian", "documents", "payment", "review"];
 
 interface Ctx { app: any; reload: () => Promise<void>; next: () => void; back: () => void; first: boolean; school: boolean; goto: (s: string) => void; exit: () => void }
 
@@ -86,7 +86,7 @@ function Personal({ c }: { c: Ctx }) {
   const prof = app.form?.personal ?? app.student.profile ?? {};
   const parts = (app.student.fullName ?? "").split(" ");
   const epoch = String(app.student.dateOfBirth).startsWith("1970");
-  const { v, set } = useFields<any>({ surname: prof.surname ?? (parts.length > 1 ? parts[parts.length - 1] : ""), firstName: prof.firstName ?? parts[0] ?? "", middleName: prof.middleName ?? "", gender: prof.gender ?? "", dateOfBirth: (prof.dateOfBirth ?? (epoch ? "" : app.student.dateOfBirth) ?? "").slice(0, 10), nationality: prof.nationality ?? "Malawian", nationalId: prof.nationalId ?? "", homeDistrict: prof.homeDistrict ?? "", traditionalAuthority: prof.traditionalAuthority ?? "", village: prof.village ?? "", religion: prof.religion ?? "", physicalAddress: prof.physicalAddress ?? "", postalAddress: prof.postalAddress ?? "", phone: prof.phone ?? "", email: prof.email ?? (user?.role === "STUDENT" ? user.email : "") });
+  const { v, set } = useFields<any>({ surname: prof.surname ?? (parts.length > 1 ? parts[parts.length - 1] : ""), firstName: prof.firstName ?? parts[0] ?? "", middleName: prof.middleName ?? "", gender: prof.gender ?? "", dateOfBirth: (prof.dateOfBirth ?? (epoch ? "" : app.student.dateOfBirth) ?? "").slice(0, 10), nationality: prof.nationality ?? "Malawian", nationalId: prof.nationalId ?? "", homeDistrict: prof.homeDistrict ?? "", village: prof.village ?? "", religion: prof.religion ?? "", physicalAddress: prof.physicalAddress ?? "", postalAddress: prof.postalAddress ?? "",  email: prof.email ?? (user?.role === "STUDENT" ? user.email : "") });
   const sn = useFields<any>({ hasDisability: app.form?.specialNeeds?.hasDisability ?? false, details: app.form?.specialNeeds?.details ?? "", assistance: app.form?.specialNeeds?.assistance ?? "" });
   const { busy, msg, run } = useBusy();
   const save = async (partial = false) => {
@@ -103,14 +103,12 @@ function Personal({ c }: { c: Ctx }) {
         <Txt label={t("p.middleName")} value={v.middleName} onChange={(x) => set("middleName", x)} />
         <Sel label={t("p.gender")} required value={v.gender} onChange={(x) => set("gender", x)} options={[["M", t("p.male")], ["F", t("p.female")]]} />
         <Txt label={t("p.dob")} type="date" required value={v.dateOfBirth} onChange={(x) => set("dateOfBirth", x)} />
-        <Txt label={t("p.nationality")} required value={v.nationality} onChange={(x) => set("nationality", x)} />
+        <Sel label={t("p.nationality")} required value={v.nationality} onChange={(x) => set("nationality", x)} options={(NATIONALITIES.includes(v.nationality) || !v.nationality ? NATIONALITIES : [v.nationality, ...NATIONALITIES]).map((n) => [n, n])} />
         <Txt label={t("p.nationalId")} value={v.nationalId} onChange={(x) => set("nationalId", x)} />
         <Txt label={t("p.homeDistrict")} required value={v.homeDistrict} onChange={(x) => set("homeDistrict", x)} />
-        <Txt label={t("p.ta")} value={v.traditionalAuthority} onChange={(x) => set("traditionalAuthority", x)} />
         <Txt label={t("p.village")} value={v.village} onChange={(x) => set("village", x)} />
         <Txt label={t("p.address")} required value={v.physicalAddress} onChange={(x) => set("physicalAddress", x)} />
         <Txt label={t("p.postal")} value={v.postalAddress} onChange={(x) => set("postalAddress", x)} />
-        <Txt label={t("p.phone")} required type="tel" inputMode="tel" value={v.phone} onChange={(x) => set("phone", x)} />
         <Txt label={t("p.email")} type="email" value={v.email} onChange={(x) => set("email", x)} />
       </div>
       <Txt label={t("p.religion")} value={v.religion} onChange={(x) => set("religion", x)} />
@@ -214,17 +212,19 @@ function Status({ c }: { c: Ctx }) {
 // ---------------------------------------------------------------- parent / guardian
 function Guardian({ c }: { c: Ctx }) {
   const { t } = useT();
+  const { user } = useSession();
+  const isParent = user?.role === "PARENT"; // a parent applying for a child IS the guardian: their phone is the account's
   const par = c.app.student.parent;
   const g0 = c.app.form?.guardian ?? (par ? { relationship: "PARENT", name: par.user.fullName, phone: par.user.phone ?? "", email: par.user.email, occupation: par.occupation } : {});
   const { v, set } = useFields<any>({ relationship: g0.relationship ?? "PARENT", name: g0.name ?? "", phone: g0.phone ?? "", email: g0.email ?? "", address: g0.address ?? "", village: g0.village ?? "", district: g0.district ?? "", occupation: g0.occupation ?? "" });
   const { busy, msg, run } = useBusy();
-  const save = async (partial = false) => { await put(`/me/applications/${c.app.id}/section/guardian${partial ? "?partial=1" : ""}`, clean(v)); await c.reload(); };
+  const save = async (partial = false) => { await put(`/me/applications/${c.app.id}/section/guardian${partial ? "?partial=1" : ""}`, clean(isParent ? { ...v, phone: "" } : v)); await c.reload(); };
   return (
     <form onSubmit={(e) => { e.preventDefault(); run(async () => { await save(); c.next(); }); }}>
       <div className="grid two">
         <Sel label={t("g.relationship")} required value={v.relationship} onChange={(x) => set("relationship", x)} options={["PARENT", "GUARDIAN", "NEXT_OF_KIN"].map((k) => [k, t(`rel.${k}`)])} />
         <Txt label={t("g.name")} required value={v.name} onChange={(x) => set("name", x)} />
-        <Txt label={t("g.phone")} required type="tel" inputMode="tel" value={v.phone} onChange={(x) => set("phone", x)} />
+        {!isParent && <Txt label={t("g.phone")} required type="tel" inputMode="tel" value={v.phone} onChange={(x) => set("phone", x)} />}
         <Txt label={t("g.email")} type="email" value={v.email} onChange={(x) => set("email", x)} />
         <Txt label={t("g.occupation")} value={v.occupation} onChange={(x) => set("occupation", x)} />
         <Txt label={t("g.address")} value={v.address} onChange={(x) => set("address", x)} />
@@ -326,6 +326,32 @@ function Documents({ c }: { c: Ctx }) {
   );
 }
 
+// ---------------------------------------------------------------- payment (BEFORE submitting)
+function Payment({ c }: { c: Ctx }) {
+  const { t } = useT();
+  const { user } = useSession();
+  const { app } = c;
+  const info = useLoad<any>("/public/payment-info");
+  const p0 = app.form?.payment ?? {};
+  const { v, set } = useFields<any>({ provider: p0.provider ?? "", reference: p0.reference ?? "", payerPhone: p0.payerPhone ?? user?.phone ?? "" });
+  const { busy, msg, run } = useBusy();
+  const body = () => ({ provider: v.provider, reference: v.reference.trim(), payerPhone: v.payerPhone.trim() });
+  const save = async (partial = false) => { await put(`/me/applications/${app.id}/section/payment${partial ? "?partial=1" : ""}`, partial ? clean(body()) : body()); await c.reload(); };
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); run(async () => { await save(); c.next(); }); }}>
+      <p>{t("wiz.payIntro")}</p>
+      <Msg kind="info"><strong>{t("fam.totalToPay")}: {mk(app.totalDueMinor)}</strong></Msg>
+      <Sel label={t("fam.provider")} required value={v.provider} onChange={(x) => set("provider", x)} options={["AIRTEL_MONEY", "MPAMBA"].map((k) => [k, t(`provider.${k}`)])} />
+      {v.provider && <Field label={t("fam.sendTo")}><div className="mono" style={{ fontSize: "1.3rem", fontWeight: 700 }}>{info.data?.[v.provider] ?? "—"}</div></Field>}
+      <Txt label={t("fam.reference")} required value={v.reference} onChange={(x) => set("reference", x)} maxLength={30} hint={t("wiz.tidHelp")} />
+      <Txt label={t("fam.payerPhone")} required type="tel" inputMode="tel" value={v.payerPhone} onChange={(x) => set("payerPhone", x)} placeholder="0999 123 456" />
+      <p className="muted">{t("wiz.payCheck")}</p>
+      {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}
+      <Nav busy={busy} back={c.back} first={false} exit={() => run(async () => { await save(true); c.exit(); })} />
+    </form>
+  );
+}
+
 // ---------------------------------------------------------------- review + submit
 function Review({ c }: { c: Ctx }) {
   const { t } = useT();
@@ -336,7 +362,7 @@ function Review({ c }: { c: Ctx }) {
   const [accepted, setAccepted] = useState(!!app.form?.declaration?.accepted);
   const [sig, setSig] = useState<string>(app.form?.declaration?.signatureName ?? "");
   const { busy, msg, run, setMsg } = useBusy();
-  const STEP_NAME: Record<string, string> = { programmes: "step.programmes", personal: "step.personal", education: "step.education", status: "step.status", guardian: "step.guardian", study: "step.study", sponsor: "step.sponsor", documents: "step.documents", review: "step.review" };
+  const STEP_NAME: Record<string, string> = { programmes: "step.programmes", personal: "step.personal", education: "step.education", status: "step.status", guardian: "step.guardian", study: "step.study", sponsor: "step.sponsor", documents: "step.documents", payment: "step.payment", review: "step.review" };
 
   const submit = async () => {
     setMsg(null);
@@ -346,7 +372,8 @@ function Review({ c }: { c: Ctx }) {
       await post(`/me/applications/${app.id}/submit`);
       router.push("/app/family/applications?submitted=1");
     } catch (e) {
-      if (e instanceof ApiError && e.code === "incomplete") {
+      if (e instanceof ApiError && e.code === "reference_already_used") { setMsg({ kind: "err", text: err(e) }); c.goto("payment"); }
+      else if (e instanceof ApiError && e.code === "incomplete") {
         const steps = [...new Set<string>((e.body?.missing ?? []).map((m: any) => m.step))];
         setMsg({ kind: "err", text: t("rv.missing", { steps: steps.map((s) => t(STEP_NAME[s] ?? s)).join(", ") }) });
         if (steps[0]) c.goto(steps[0]);
@@ -394,7 +421,7 @@ export function Wizard({ appId }: { appId: string }) {
   const cur = steps[i]!;
   const label = (s: Step) => t(s === "programmes" && school ? "step.class" : `step.${s}`);
   const ctx: Ctx = { app, reload, school, first: i === 0, next: () => { setI((x) => Math.min(x + 1, steps.length - 1)); window.scrollTo(0, 0); }, back: () => setI((x) => Math.max(0, x - 1)), goto: (s) => { const k = steps.indexOf(s as Step); if (k >= 0) { setI(k); window.scrollTo(0, 0); } }, exit: () => router.push("/app/family/applications") };
-  const Body = { programmes: Programmes, personal: Personal, education: Education, status: Status, guardian: Guardian, study: Study, sponsor: Sponsor, documents: Documents, review: Review }[cur];
+  const Body = { programmes: Programmes, personal: Personal, education: Education, status: Status, guardian: Guardian, study: Study, sponsor: Sponsor, documents: Documents, payment: Payment, review: Review }[cur];
 
   return (
     <div>
