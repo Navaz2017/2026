@@ -1,5 +1,6 @@
 import { API } from "./config";
 import { secret } from "./kv";
+import { sha256 as jsSha256 } from "js-sha256";
 import { setDiagReporter, stage } from "./diag";
 import { File as PhoneFile } from "expo-file-system";
 import { markOffline, markOnline } from "./net";
@@ -76,7 +77,7 @@ export async function logoutRemote() {
 
 // fetch() cannot open some Android file:// paths (names with %, spaces or non-ASCII give a 404), so read through the file system module.
 async function readPicked(uri: string): Promise<ArrayBuffer> {
-  try { return await new PhoneFile(uri).arrayBuffer(); }
+  try { return new Uint8Array(await new PhoneFile(uri).arrayBuffer()).slice().buffer; } // copy into a plain JS buffer (the native-backed one cannot be hashed or sent)
   catch (first) {
     try { const r = await fetch(uri); if (r.ok || r.status === 0) return await r.arrayBuffer(); } catch { /* fall through */ }
     throw first;
@@ -102,9 +103,10 @@ export async function uploadPicked(urlPath: string, confirmPath: string, f: Pick
 }
 
 async function sha256Hex(buf: ArrayBuffer) {
-  const { digest, CryptoDigestAlgorithm } = await import("expo-crypto");
-  const d = await digest(CryptoDigestAlgorithm.SHA256, buf);
-  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+  try {
+    const { digest, CryptoDigestAlgorithm } = await import("expo-crypto");
+    return Array.from(new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256, new Uint8Array(buf))), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch { return jsSha256(buf); } // same result, pure JS: slower but never depends on the native module
 }
 
 setDiagReporter((b) => post("/me/diag", b));
