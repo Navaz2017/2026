@@ -111,7 +111,13 @@ admin.put("/revenue-config", body(z.object({
 }));
 
 // ---- Numbers applicants pay to (shown in the app at payment time)
-admin.put("/payment-info", body(z.object({ AIRTEL_MONEY: z.string().optional(), MPAMBA: z.string().optional() })), h(async (req, res) => {
+const agent = z.object({ code: z.string().trim().max(30), name: z.string().trim().max(80) });
+admin.put("/payment-info", body(z.object({ AIRTEL_MONEY: z.string().optional(), MPAMBA: z.string().optional(), agents: z.object({ AIRTEL_MONEY: agent.optional(), MPAMBA: agent.optional() }).optional() })), h(async (req, res) => {
+  // Applicants are told to "cash out" at an agent: the agent code and name are what they need at the counter.
+  for (const k of ["AIRTEL_MONEY", "MPAMBA"] as const) {
+    const a = req.body.agents?.[k]; if (!a) continue;
+    for (const [f, value] of [["code", a.code], ["name", a.name]] as const) await prisma.setting.upsert({ where: { key: `pay.${k}.agent${f}` }, create: { key: `pay.${k}.agent${f}`, value }, update: { value } });
+  }
   for (const k of ["AIRTEL_MONEY", "MPAMBA"] as const) {
     const raw = req.body[k]; if (raw === undefined) continue;
     const phone = normalisePhone(raw);

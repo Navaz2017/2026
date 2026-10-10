@@ -7,12 +7,13 @@ import { Btn, Card, Field, Loading, Msg, Page, dt, mk, useBusy, useLoad } from "
 export default function Revenue() {
   const { t } = useT();
   const hist = useLoad<any[]>("/admin/revenue-config");
-  const info = useLoad<{ AIRTEL_MONEY: string | null; MPAMBA: string | null }>("/public/payment-info");
+  const info = useLoad<any>("/public/payment-info");
   const [com, setCom] = useState(30), [svc, setSvc] = useState(30);
   const [airtel, setAirtel] = useState(""), [mpamba, setMpamba] = useState("");
+  const [ag, setAg] = useState({ AIRTEL_MONEY: { code: "", name: "" }, MPAMBA: { code: "", name: "" } });
   const a = useBusy(), b = useBusy();
   useEffect(() => { const c = hist.data?.[0]; if (c) { setCom(c.institutionCommissionBps / 100); setSvc(c.studentServiceFeeBps / 100); } }, [hist.data]);
-  useEffect(() => { if (info.data) { setAirtel(info.data.AIRTEL_MONEY ?? ""); setMpamba(info.data.MPAMBA ?? ""); } }, [info.data]);
+  useEffect(() => { if (info.data) { setAirtel(info.data.AIRTEL_MONEY ?? ""); setMpamba(info.data.MPAMBA ?? ""); setAg({ AIRTEL_MONEY: { code: info.data.agents?.AIRTEL_MONEY?.code ?? "", name: info.data.agents?.AIRTEL_MONEY?.name ?? "" }, MPAMBA: { code: info.data.agents?.MPAMBA?.code ?? "", name: info.data.agents?.MPAMBA?.name ?? "" } }); } }, [info.data]);
   const fee = 10_000;
 
   return (
@@ -27,7 +28,13 @@ export default function Revenue() {
       <Card title={t("rev.payInfoTitle")}>
         <Field label={t("provider.AIRTEL_MONEY")}><input value={airtel} onChange={(e) => setAirtel(e.target.value)} inputMode="tel" /></Field>
         <Field label={t("provider.MPAMBA")}><input value={mpamba} onChange={(e) => setMpamba(e.target.value)} inputMode="tel" /></Field>
-        <Btn busy={b.busy} onClick={() => b.run(() => put("/admin/payment-info", { ...(airtel && { AIRTEL_MONEY: airtel }), ...(mpamba && { MPAMBA: mpamba }) }), t("common.saved"))}>{t("common.save")}</Btn>
+        {(["AIRTEL_MONEY", "MPAMBA"] as const).map((k) => (
+          <div key={k} className="grid two">
+            <Field label={`${t(`provider.${k}`)} — ${t("fam.agentCode")}`}><input value={ag[k].code} maxLength={30} onChange={(e) => setAg({ ...ag, [k]: { ...ag[k], code: e.target.value } })} /></Field>
+            <Field label={`${t(`provider.${k}`)} — ${t("fam.agentName")}`}><input value={ag[k].name} maxLength={80} onChange={(e) => setAg({ ...ag, [k]: { ...ag[k], name: e.target.value } })} /></Field>
+          </div>
+        ))}
+        <Btn busy={b.busy} onClick={() => b.run(() => put("/admin/payment-info", { ...(airtel && { AIRTEL_MONEY: airtel }), ...(mpamba && { MPAMBA: mpamba }), agents: Object.fromEntries(Object.entries(ag).filter(([, v]) => v.code)) }), t("common.saved"))}>{t("common.save")}</Btn>
         {b.msg && <Msg kind={b.msg.kind}>{b.msg.text}</Msg>}
       </Card>
       <Card title={t("rev.history")}>

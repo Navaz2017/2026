@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, 
 import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError } from "./api";
+import { StageError } from "./diag";
 import { API } from "./config";
 import { LANGS, useT } from "./i18n";
 import { useOnline } from "./net";
@@ -18,10 +19,11 @@ export const dt = (s?: string | null) => (s ? String(s).slice(0, 10) : "");
 export function useErr() {
   const { t } = useT();
   return (e: unknown) => {
-    const code = e instanceof ApiError ? e.code : "internal";
-    if (code === "validation") return t("err.validation");
-    const m = t(`err.${code}`);
-    return m === `err.${code}` ? t("err.internal") : m;
+    const root = e instanceof StageError ? e.cause : e;
+    const code = root instanceof ApiError ? root.code : "internal";
+    const m = code === "validation" ? t("err.validation") : t(`err.${code}`);
+    const text = m === `err.${code}` ? t("err.internal") : m;
+    return e instanceof StageError ? `${text}\n${t("m.uploadProblem")}: ${e.stage} — ${e.message}` : text; // say WHERE it failed
   };
 }
 

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { CashOut } from "@/components/CashOut";
 import { api, ApiError, post, put, uploadFile } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { useSession } from "@/lib/session";
@@ -342,7 +343,7 @@ function Payment({ c }: { c: Ctx }) {
       <p>{t("wiz.payIntro")}</p>
       <Msg kind="info"><strong>{t("fam.totalToPay")}: {mk(app.totalDueMinor)}</strong></Msg>
       <Sel label={t("fam.provider")} required value={v.provider} onChange={(x) => set("provider", x)} options={["AIRTEL_MONEY", "MPAMBA"].map((k) => [k, t(`provider.${k}`)])} />
-      {v.provider && <Field label={t("fam.sendTo")}><div className="mono" style={{ fontSize: "1.3rem", fontWeight: 700 }}>{info.data?.[v.provider] ?? "—"}</div></Field>}
+      {v.provider && <CashOut info={info.data} provider={v.provider} />}
       <Txt label={t("fam.reference")} required value={v.reference} onChange={(x) => set("reference", x)} maxLength={30} hint={t("wiz.tidHelp")} />
       <Txt label={t("fam.payerPhone")} required type="tel" inputMode="tel" value={v.payerPhone} onChange={(x) => set("payerPhone", x)} placeholder="0999 123 456" />
       <p className="muted">{t("wiz.payCheck")}</p>

@@ -54,17 +54,34 @@ async function shrinkImage(file: File): Promise<File> {
 }
 const ALLOWED_UPLOAD = ["application/pdf", "image/jpeg", "image/png"];
 
-// Direct-to-storage upload: ask the API for a signed URL, PUT the bytes, then tell the API about the stored file.
+// A failure with the step it happened in, shown on screen, logged to the console and reported to the server log.
+export class StageError extends Error {
+  constructor(public stage: string, public cause: unknown) { super(cause instanceof ApiError ? `${cause.status || "network"} ${cause.code}` : cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)); }
+}
+async function stage<T>(name: string, fn: () => Promise<T>, meta: { mime?: string; size?: number }): Promise<T> {
+  try { return await fn(); } catch (e) {
+    if (e instanceof StageError) throw e;
+    const err = new StageError(name, e);
+    console.warn(`[upload:${name}]`, err.message, meta, e);
+    post("/me/diag", { stage: name, message: err.message.slice(0, 300), platform: navigator.userAgent.slice(0, 40), ...meta }).catch(() => {});
+    throw err;
+  }
+}
+
+// Upload: ask the API for a link, send the bytes, then tell the API about the stored file. The link follows the address this app called.
 export async function uploadFile(urlPath: string, confirmPath: string, file0: File, extra: Record<string, unknown> = {}) {
-  const file = await shrinkImage(file0);
+  const meta = { mime: file0.type, size: file0.size };
+  const file = await stage("prepare", () => shrinkImage(file0), meta);
   if (!ALLOWED_UPLOAD.includes(file.type)) throw new ApiError(400, "file_type_not_allowed"); // e.g. iPhone HEIC photos
-  const slot = await post(urlPath, { mime: file.type, size: file.size, ...extra });
-  const buf = await file.arrayBuffer();
-  const sha = await sha256Hex(buf);
-  let put: Response;
-  try { put = await fetch(slot.url, { method: "PUT", headers: slot.headers, body: buf }); } catch { throw new ApiError(0, "upload_failed"); }
-  if (!put.ok) throw new ApiError(put.status, "upload_failed");
-  return post(confirmPath, { key: slot.key, sha256: sha, mime: file.type, size: file.size, ...extra });
+  const buf = await stage("read-file", () => file.arrayBuffer(), meta);
+  const sha = await stage("checksum", () => sha256Hex(buf), meta);
+  const slot = await stage("get-link", () => post(urlPath, { mime: file.type, size: file.size, ...extra }), meta);
+  await stage("send-file", async () => {
+    let put: Response;
+    try { put = await fetch(slot.url, { method: "PUT", headers: slot.headers, body: buf }); } catch (e) { throw new Error(`cannot reach ${String(slot.url).slice(0, 60)}: ${e instanceof Error ? e.message : e}`); }
+    if (!put.ok) throw new ApiError(put.status, ((await put.json().catch(() => ({}))) as any).error ?? "upload_failed");
+  }, meta);
+  return stage("save", () => post(confirmPath, { key: slot.key, sha256: sha, mime: file.type, size: file.size, ...extra }), meta);
 }
 
 // CSV etc. need the Authorization header, so fetch as blob then save.

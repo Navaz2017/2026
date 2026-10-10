@@ -39,6 +39,12 @@ family.get("/children", requireRole("PARENT"), h(async (req, res) => {
   res.json(await prisma.student.findMany({ where: { parent: { userId: req.user!.sub } } }));
 }));
 
+// Apps report where a file upload failed (picking, reading, sending...) so the server log shows the real reason.
+family.post("/diag", body(z.object({ stage: z.string().max(40), message: z.string().max(300), platform: z.string().max(40).optional(), mime: z.string().max(80).optional(), size: z.number().optional() })), h(async (req, res) => {
+  console.warn("[client-diag]", JSON.stringify({ user: req.user!.sub, ...req.body }));
+  res.status(204).end();
+}));
+
 // ---- Credentials (student, or parent on behalf of a child)
 const fileMeta = z.object({ mime: z.string(), size: z.number().int().positive() });
 family.post("/students/:sid/credentials/upload-url", requireVerifiedPhone, body(fileMeta), h(async (req, res) => {

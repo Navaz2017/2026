@@ -60,7 +60,9 @@ publicCatalog.get("/programs", h(async (req, res) => {
 
 // Where applicants send the money. Set by the owner (admin PUT /payment-info).
 publicCatalog.get("/payment-info", h(async (_req, res) => {
-  const rows = await prisma.setting.findMany({ where: { key: { in: ["pay.AIRTEL_MONEY", "pay.MPAMBA"] } } });
+  const P = ["AIRTEL_MONEY", "MPAMBA"];
+  const rows = await prisma.setting.findMany({ where: { key: { in: P.flatMap((k) => [`pay.${k}`, `pay.${k}.agentcode`, `pay.${k}.agentname`]) } } });
   const v = (k: string) => rows.find((r) => r.key === k)?.value ?? null;
-  res.set("Cache-Control", "public, max-age=60").json({ AIRTEL_MONEY: v("pay.AIRTEL_MONEY"), MPAMBA: v("pay.MPAMBA") });
+  const agents = Object.fromEntries(P.map((k) => [k, { code: v(`pay.${k}.agentcode`), name: v(`pay.${k}.agentname`) }]));
+  res.set("Cache-Control", "public, max-age=60").json({ AIRTEL_MONEY: v("pay.AIRTEL_MONEY"), MPAMBA: v("pay.MPAMBA"), agents });
 }));

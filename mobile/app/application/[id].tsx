@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Alert, Linking, Platform, Text } from "react-native";
 import { api, del, post } from "../../src/api";
 import { useT } from "../../src/i18n";
+import { CashOut } from "../../src/CashOut";
 import { useResource } from "../../src/offline";
 import { Badge, Btn, C, Card, Field, H2, Loading, Msg, P, Row, Screen, Select, mk, toneFor, useBusy } from "../../src/ui";
 
@@ -16,8 +17,7 @@ function PayForm({ a, info, onDone }: { a: any; info: any; onDone: () => void })
     <>
       <P>{t("fam.payHow", { amount: mk(a.totalDueMinor) })}</P>
       <Select label={t("fam.provider")} value={provider} onChange={setProvider} options={["AIRTEL_MONEY", "MPAMBA"].map((p): [string, string] => [p, t(`provider.${p}`)])} />
-      <P muted>{t("fam.sendTo")}</P>
-      <Text selectable style={{ fontSize: 26, fontWeight: "700", color: C.navy, marginBottom: 12 }}>{info?.[provider] ?? "—"}</Text>
+      <CashOut info={info} provider={provider} />
       <Field testID="reference" label={t("fam.reference")} value={reference} onChange={setReference} autoCapitalize="characters" maxLength={30} />
       <Field testID="payerPhone" label={t("fam.payerPhone")} value={phone} onChange={setPhone} keyboardType="phone-pad" placeholder="0999 123 456" />
       {msg && <Msg kind={msg.kind}>{msg.text}</Msg>}

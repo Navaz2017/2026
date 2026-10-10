@@ -7,6 +7,7 @@ import { ACADEMIC_KINDS, DOC_KINDS, pickFile, pickPhoto } from "./files";
 import { DATE_RE, HEARD, MODES, NATIONALITIES, OTHER_QUALS, QUALS, clean } from "./forms";
 import { useT } from "./i18n";
 import { cacheSet, flushOutbox, overlayApplication, pendingFor, useResource, writeOrQueue } from "./offline";
+import { CashOut } from "./CashOut";
 import { ProgramFacts, isSchool } from "./school";
 import { Badge, Btn, C, Card, Check, DateField, Field, LinkBtn, Loading, Msg, P, Row, Select, dt, mk, useBusy, useErr } from "./ui";
 
@@ -344,7 +345,7 @@ function Payment({ c }: { c: Ctx }) {
       <P>{t("wiz.payIntro")}</P>
       <Msg kind="info">{t("fam.totalToPay")}: {mk(app.totalDueMinor)}</Msg>
       <Select label={t("fam.provider")} required value={v.provider} onChange={set("provider")} options={["AIRTEL_MONEY", "MPAMBA"].map((k): [string, string] => [k, t(`provider.${k}`)])} />
-      {v.provider ? <><P muted>{t("fam.sendTo")}</P><Text selectable style={{ fontSize: 24, fontWeight: "700", color: C.navy, marginBottom: 12 }}>{info.data?.[v.provider] ?? "—"}</Text></> : null}
+      {v.provider ? <CashOut info={info.data} provider={v.provider} /> : null}
       <Field testID="payRef" label={t("fam.reference")} hint={t("wiz.tidHelp")} required value={v.reference} onChange={set("reference")} autoCapitalize="characters" maxLength={30} />
       <Field testID="payPhone" label={t("fam.payerPhone")} required value={v.payerPhone} onChange={set("payerPhone")} keyboardType="phone-pad" placeholder="0999 123 456" />
       <P muted>{t("wiz.payCheck")}</P>

@@ -37,7 +37,7 @@ Day-to-day school life on top of Enrolla: roster, attendance, results, teacher f
 ## Build phases and acceptance
 1. **Foundation + roster + linking + announcements + attendance + results (BUILT in this repo - see HANDOFF.md for the exact state).**
 2. Teacher <-> guardian threads, class channels, homework/assignment submissions (file upload) with feedback, teacher mobile screens, quiet-hours setting, staff invitations UI, claim-code/QR flow for unmatched phones.
-3. Paid tutoring courses (monthly, mobile-money + SMS matching), teacher data-bundle incentives, fees tracking, report-card PDFs, timetable/calendar, primary-school grading scales.
+3. Paid tutoring courses (monthly, mobile-money + SMS matching), teacher data-bundle incentives, report-card PDFs, timetable/calendar, primary-school grading scales.
 
 ## Grading scales (configurable per school; defaults)
 JCE/MSCE (MANEB): percentage -> grade 1-9 (1 = 80-100 ... 9 = below 40). Primary: percentage + position. Store raw `score`/`maxScore`; compute grades on read from a school-level scale (so scales can change).

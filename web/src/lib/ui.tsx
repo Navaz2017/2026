@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { api, ApiError } from "./api";
+import { api, ApiError, StageError } from "./api";
 import { useT } from "./i18n";
 
 export const mk = (minor: number | null | undefined) => `MK ${((minor ?? 0) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
@@ -12,11 +12,13 @@ export const dtt = (d?: string | null) => (d ? new Date(d).toLocaleString(undefi
 export function useErr() {
   const { t } = useT();
   return (e: unknown) => {
-    if (e instanceof ApiError) {
-      const key = e.status === 0 ? "err.network" : `err.${e.code}`;
-      const s = t(key); return s === key ? t("err.internal") : s;
+    const root = e instanceof StageError ? e.cause : e;
+    const detail = e instanceof StageError ? ` (${e.stage}: ${e.message})` : ""; // say WHERE an upload failed
+    if (root instanceof ApiError) {
+      const key = root.status === 0 ? "err.network" : `err.${root.code}`;
+      const s = t(key); return (s === key ? t("err.internal") : s) + detail;
     }
-    return t("err.internal");
+    return t("err.internal") + detail;
   };
 }
 

@@ -55,8 +55,8 @@ export class HttpError extends Error { constructor(public status: number, public
 
 export async function presignUpload(prefix: string, mime: string, size: number) {
   const max = ALLOWED[mime];
-  if (!max) throw new HttpError(400, "file_type_not_allowed");
-  if (size > max) throw new HttpError(400, "file_too_large");
+  if (!max) { console.warn("[upload] refused type", mime); throw new HttpError(400, "file_type_not_allowed"); }
+  if (size > max) { console.warn("[upload] refused size", mime, size); throw new HttpError(400, "file_too_large"); }
   const key = `${prefix}/${randomUUID()}`;
   if (local) return { key, url: `${apiBase()}/v1/files/put/${sign({ op: "put", key, mime, size, exp: Date.now() + 300_000 })}`, headers: { "Content-Type": mime } };
   const { s3, S3, sign: signUrl } = await aws();

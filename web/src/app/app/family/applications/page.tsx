@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, del, post } from "@/lib/api";
 import { Icon } from "@/components/Icon";
+import { CashOut } from "@/components/CashOut";
 import { useT } from "@/lib/i18n";
 import { useLiveReload } from "@/lib/realtime";
 import { Badge, Btn, Card, Empty, Field, Loading, Msg, Page, confirmBox, mk, openSigned, useBusy, useLoad } from "@/lib/ui";
@@ -20,7 +21,7 @@ function PayForm({ a, info, onDone }: { a: any; info: any; onDone: () => void })
       <p>{t("fam.payHow", { amount: mk(a.totalDueMinor) })}</p>
       <div className="grid two">
         <Field label={t("fam.provider")}><select value={provider} onChange={(e) => setProvider(e.target.value)}>{["AIRTEL_MONEY", "MPAMBA"].map((p) => <option key={p} value={p}>{t(`provider.${p}`)}</option>)}</select></Field>
-        <Field label={t("fam.sendTo")}><div className="mono" style={{ fontSize: "1.3rem", fontWeight: 700 }}>{number ?? "—"}</div></Field>
+        <CashOut info={info} provider={provider} />
         <Field label={t("fam.reference")}><input required minLength={6} maxLength={30} value={reference} onChange={(e) => setReference(e.target.value)} autoCapitalize="characters" /></Field>
         <Field label={t("fam.payerPhone")}><input required type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0999 123 456" /></Field>
       </div>
